@@ -1,21 +1,17 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import './globals.css'
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
+const inter = Inter({ 
+  subsets: ['latin', 'arabic'],
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'Molio Empire | شبكتك الاجتماعية',
   description: 'شارك أفكارك، صورك، وتواصل مع أصدقائك على Molio Empire. منصة اجتماعية عصرية وسريعة.',
+  keywords: ['social network', 'شبكة اجتماعية', 'molio empire', 'منصة اجتماعية', 'مشاركة صور'],
+  authors: [{ name: 'Molio Empire' }],
   openGraph: {
     title: 'Molio Empire',
     description: 'شارك أفكارك، صورك، وتواصل مع أصدقائك على Molio Empire.',
@@ -23,10 +19,10 @@ export const metadata: Metadata = {
     siteName: 'Molio Empire',
     images: [
       {
-        url: 'https://www.moliosempire.com/og-image.png', // غادي نصايبو هاد الصورة دابا
+        url: 'https://www.moliosempire.com/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'Molio Empire Preview',
+        alt: 'Molio Empire - شبكتك الاجتماعية',
       },
     ],
     locale: 'ar_MA',
@@ -38,15 +34,22 @@ export const metadata: Metadata = {
     description: 'شارك أفكارك، صورك، وتواصل مع أصدقائك على Molio Empire.',
     images: ['https://www.moliosempire.com/og-image.png'],
   },
+  robots: {
+    index: true,
+    follow: true,
+  },
 }
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="ar" dir="rtl">
+      <body className={`${inter.className} antialiased`} suppressHydrationWarning>
+        {children}
+      </body>
     </html>
-  );
+  )
 }
