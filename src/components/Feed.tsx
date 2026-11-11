@@ -40,6 +40,18 @@ export default function Feed() {
       }
     }
     getUser()
+
+    // إعداد الاستماع الفوري (Real-time)
+    const channel = supabase
+      .channel('realtime-social')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, fetchPosts)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, fetchPosts)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, fetchPosts)
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   const fetchFollowing = async (userId: string) => {
