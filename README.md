@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🌍 Molios Empire
 
-## Getting Started
+![Molios Empire](https://img.shields.io/badge/Status-Live-brightgreen) ![Next.js](https://img.shields.io/badge/Next.js-14-black) ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E)
 
-First, run the development server:
+منصة تواصل اجتماعي عصرية، سريعة، ومتكاملة، مبنية بأحدث تقنيات الويب. تتيح للمستخدمين نشر الأفكار والصور، التفاعل مع المحتوى، وبناء شبكتهم الخاصة في وقت حقيقي (Real-time).
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+🔗 **الموقع الحي (Live Demo):** [www.moliosempire.com](https://www.moliosempire.com)
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## ✨ الميزات الرئيسية
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- 🔐 **نظام مصادقة آمن:** تسجيل الدخول والخروج باستخدام Supabase Auth.
+- 📝 **إدارة المنشورات:** إنشاء منشورات نصية ومرئية مع دعم رفع الصور.
+- ⚡ **تحديث فوري (Real-time):** ظهور الإعجابات والتعليقات فوراً دون الحاجة لتحديث الصفحة.
+- 👥 **نظام المتابعة:** إمكانية متابعة وإلغاء متابعة المستخدمين الآخرين.
+- 💬 **نظام التعليقات:** التفاعل المباشر مع منشورات الآخرين.
+- 🌙 **الوضع الليلي (Dark Mode):** تجربة مستخدم مريحة وقابلة للتخصيص.
+- 👤 **ملف شخصي متكامل:** إحصائيات (المنشورات، المتابعين، المتابَعين) مع إمكانية رفع صورة شخصية (Avatar).
+- 🔍 **بحث فوري:** تصفية المنشورات والمستخدمين بشكل لحظي.
+- 📱 **تصميم متجاوب (Responsive):** يعمل بسلاسة على جميع الأجهزة (موبايل، تابلت، حاسوب).
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## 🛠️ تقنيات البناء (Tech Stack)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Frontend:** Next.js 14 (App Router), React, TypeScript, Tailwind CSS
+- **Backend & Database:** Supabase (PostgreSQL, Realtime, Storage, Auth)
+- **Deployment:** Vercel
+- **Icons:** Lucide React
+- **Domain:** Custom `.com` domain with SSL & SEO optimization
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 🚀 كيفية تشغيل المشروع محلياً
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. استنساخ المستودع:
+   ```bash
+   git clone https://github.com/mohamedbennah3-art/social-mvp.git
+   cd social-mvp
