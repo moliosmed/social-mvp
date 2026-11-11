@@ -120,21 +120,7 @@ export default function Feed() {
     fetchPosts()
   }
 
-  const handleCommentLike = async (commentId: string) => {
-    const { data: existing } = await supabase
-      .from('comment_likes')
-      .select('id')
-      .eq('comment_id', commentId)
-      .eq('user_id', user.id)
-      .single()
-    
-    if (existing) {
-      await supabase.from('comment_likes').delete().eq('id', existing.id)
-    } else {
-      await supabase.from('comment_likes').insert({ comment_id: commentId, user_id: user.id })
-    }
-    fetchPosts()
-  }
+  handleCommentLike
 
   const handleComment = async (postId: string) => {
     const text = commentTexts[postId]
