@@ -41,12 +41,12 @@ export default function Feed() {
     }
     getUser()
 
-    // إعداد الاستماع الفوري (Real-time)
     const channel = supabase
       .channel('realtime-social')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, fetchPosts)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, fetchPosts)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, fetchPosts)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_likes' }, fetchPosts)
       .subscribe()
 
     return () => {
@@ -62,7 +62,18 @@ export default function Feed() {
   const fetchPosts = async () => {
     const { data, error } = await supabase
       .from('posts')
-      .select('*, profiles(id, username, full_name), likes(user_id), comments(content, profiles(username))')
+      .select(`
+        *, 
+        profiles(id, username, full_name, avatar_url), 
+        likes(user_id), 
+        comments(
+          id, 
+          content, 
+          user_id,
+          profiles(username, avatar_url),
+          comment_likes(user_id)
+        )
+      `)
       .order('created_at', { ascending: false })
     if (error) setError('خطأ ف جلب المنشورات: ' + error.message)
     else if (data) setPosts(data)
@@ -109,6 +120,22 @@ export default function Feed() {
     fetchPosts()
   }
 
+  const handleCommentLike = async (commentId: string) => {
+    const { data: existing } = await supabase
+      .from('comment_likes')
+      .select('id')
+      .eq('comment_id', commentId)
+      .eq('user_id', user.id)
+      .single()
+    
+    if (existing) {
+      await supabase.from('comment_likes').delete().eq('id', existing.id)
+    } else {
+      await supabase.from('comment_likes').insert({ comment_id: commentId, user_id: user.id })
+    }
+    fetchPosts()
+  }
+
   const handleComment = async (postId: string) => {
     const text = commentTexts[postId]
     if (!text?.trim()) return
@@ -145,7 +172,7 @@ export default function Feed() {
     <div className={`min-h-screen ${bg} transition-colors duration-300`}>
       <header className={`sticky top-0 z-10 border-b px-4 py-3 shadow-sm ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} transition-colors duration-300`}>
         <div className="max-w-2xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
-          <h1 className="text-xl font-bold text-blue-600">Social MVP</h1>
+          <h1 className="text-xl font-bold text-blue-600">Molios Empire</h1>
           
           <div className="relative w-full sm:w-64">
             <Search className={`absolute right-3 top-1/2 -translate-y-1/2 ${textSecondary}`} size={20} />
@@ -207,14 +234,13 @@ export default function Feed() {
             <div key={post.id} className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
-{post.profiles?.avatar_url ? (
-  <img src={post.profiles.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
-) : (
-  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
-    {post.profiles?.username?.[0]?.toUpperCase() || 'U'}
-  </div>
-)}                  </div>
+                  {post.profiles?.avatar_url ? (
+                    <img src={post.profiles.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+                      {post.profiles?.username?.[0]?.toUpperCase() || 'U'}
+                    </div>
+                  )}
                   <span className={`font-bold ${textPrimary}`}>{post.profiles?.full_name || post.profiles?.username}</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -244,8 +270,28 @@ export default function Feed() {
                 <div className={`mt-4 space-y-3 border-t pt-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                   {post.comments?.map((comment: any, idx: number) => (
                     <div key={idx} className={`p-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                      <span className={`font-bold ${textPrimary}`}>{comment.profiles?.username}: </span>
-                      <span className={textPrimary}>{comment.content}</span>
+                      <div className="flex items-start gap-2">
+                        {comment.profiles?.avatar_url ? (
+                          <img src={comment.profiles.avatar_url} alt="Avatar" className="w-6 h-6 rounded-full object-cover" />
+                        ) : (
+                          <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">
+                            {comment.profiles?.username?.[0]?.toUpperCase() || 'U'}
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <div>
+                            <span className={`font-bold ${textPrimary}`}>{comment.profiles?.username}: </span>
+                            <span className={textPrimary}>{comment.content}</span>
+                          </div>
+                          <button 
+                            onClick={() => handleCommentLike(comment.id)}
+                            className={`flex items-center gap-1 mt-1 text-xs transition ${comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}
+                          >
+                            <Heart size={12} className={comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} />
+                            <span>{comment.comment_likes?.length || 0}</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ))}
                   <div className="flex gap-2">
