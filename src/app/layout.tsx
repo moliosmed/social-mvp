@@ -12,6 +12,14 @@ export const metadata: Metadata = {
   description: 'شارك أفكارك، صورك، وتواصل مع أصدقائك على Molio Empire. منصة اجتماعية عصرية وسريعة.',
   keywords: ['social network', 'شبكة اجتماعية', 'molio empire', 'منصة اجتماعية', 'مشاركة صور'],
   authors: [{ name: 'Molio Empire' }],
+  icons: {
+    icon: [
+      { url: '/favicon.ico' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
   openGraph: {
     title: 'Molio Empire',
     description: 'شارك أفكارك، صورك، وتواصل مع أصدقائك على Molio Empire.',
