@@ -196,8 +196,13 @@ export default function Feed() {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
-                    {post.profiles?.username?.[0]?.toUpperCase() || 'U'}
-                  </div>
+{post.profiles?.avatar_url ? (
+  <img src={post.profiles.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
+) : (
+  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+    {post.profiles?.username?.[0]?.toUpperCase() || 'U'}
+  </div>
+)}                  </div>
                   <span className={`font-bold ${textPrimary}`}>{post.profiles?.full_name || post.profiles?.username}</span>
                 </div>
                 <div className="flex items-center gap-2">

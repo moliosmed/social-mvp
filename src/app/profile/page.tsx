@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { ArrowLeft, Users, UserCheck, FileText, LogOut } from 'lucide-react'
+import { ArrowLeft, Users, UserCheck, FileText, LogOut, Camera } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Profile() {
@@ -10,30 +10,26 @@ export default function Profile() {
   const [profile, setProfile] = useState<any>(null)
   const [posts, setPosts] = useState<any[]>([])
   const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0 })
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  
   const supabase = createClient()
 
   useEffect(() => {
     const getData = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        window.location.href = '/'
-        return
-      }
+      if (!user) { window.location.href = '/'; return }
       setUser(user)
       
-      // جلب البروفايل
       const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       setProfile(profileData)
 
-      // جلب المنشورات
       const { data: postsData } = await supabase.from('posts').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
       setPosts(postsData || [])
       setStats(prev => ({ ...prev, posts: postsData?.length || 0 }))
 
-      // جلب الإحصائيات
       const { count: followers } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id)
       const { count: following } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id)
-      
       setStats(prev => ({ ...prev, followers: followers || 0, following: following || 0 }))
     }
     getData()
@@ -42,6 +38,43 @@ export default function Profile() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     window.location.href = '/'
+  }
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+
+    setUploading(true)
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`
+      
+      // 1. رفع الصورة لـ Bucket ديال avatars
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, { upsert: true })
+
+      if (uploadError) throw uploadError
+
+      // 2. جلب الرابط العام
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName)
+
+      // 3. تحديث جدول profiles
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', user.id)
+
+      if (updateError) throw updateError
+
+      setProfile({ ...profile, avatar_url: publicUrl })
+    } catch (error: any) {
+      alert('خطأ ف رفع الصورة: ' + error.message)
+    } finally {
+      setUploading(false)
+    }
   }
 
   if (!user || !profile) return <div className="p-8 text-center text-gray-500">جاري التحميل...</div>
@@ -60,12 +93,31 @@ export default function Profile() {
 
         <div className="bg-white p-6 rounded-xl shadow mb-6">
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-2xl">
-              {profile.username?.[0]?.toUpperCase() || 'U'}
+            {/* صورة البروفايل مع زر الكاميرا */}
+            <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+              {profile.avatar_url ? (
+                <img src={profile.avatar_url} alt="Avatar" className="w-20 h-20 rounded-full object-cover border-2 border-blue-500" />
+              ) : (
+                <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-3xl border-2 border-blue-500">
+                  {profile.username?.[0]?.toUpperCase() || 'U'}
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                <Camera className="text-white" size={24} />
+              </div>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                accept="image/*" 
+                onChange={handleAvatarUpload} 
+                className="hidden" 
+              />
             </div>
+            
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{profile.full_name || profile.username}</h1>
               <p className="text-gray-500">@{profile.username}</p>
+              {uploading && <p className="text-sm text-blue-600 mt-1">جاري رفع الصورة...</p>}
             </div>
           </div>
 
