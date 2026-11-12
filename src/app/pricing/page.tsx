@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { Check, X, Sparkles, ArrowLeft, Loader2 } from 'lucide-react'
 import Link from 'next/link'
@@ -28,6 +28,7 @@ export default function Pricing() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const paypalRef = useRef<any>(null)
 
   const supabase = createClient()
 
@@ -51,6 +52,41 @@ export default function Pricing() {
         supabase.from('profiles').select('*').eq('id', user.id).single()
           .then(({ data }) => setProfile(data))
       }
+    }
+
+    // تحميل PayPal SDK
+    const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID
+    if (clientId && !document.querySelector('script[data-paypal-sdk]')) {
+      const script = document.createElement('script')
+      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&vault=true&intent=subscription&locale=ar_MA&currency=MAD`
+      script.setAttribute('data-paypal-sdk', 'true')
+      script.setAttribute('data-namespace', 'paypalSdk')
+      script.onload = () => {
+        if ((window as any).paypalSdk && (window as any).paypalSdk.Buttons && user) {
+          ;(window as any).paypalSdk.Buttons({
+            style: { shape: 'pill', color: 'blue', layout: 'vertical', label: 'subscribe' },
+            createSubscription: (data: any, actions: any) => {
+              return actions.subscription.create({
+                plan_id: process.env.NEXT_PUBLIC_PAYPAL_PLAN_ID,
+                custom_id: `${user.id}|premium_monthly`,
+                subscriber: { name: { given_name: profile?.full_name || profile?.username || 'User' } },
+              })
+            },
+            onApprove: (data: any) => {
+              fetch('/api/paypal/activate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.id, subscriptionId: data.subscriptionID }),
+              }).then(() => {
+                setSuccess(true)
+                supabase.from('profiles').select('*').eq('id', user.id).single()
+                  .then(({ data: p }) => setProfile(p))
+              })
+            },
+          }).render('#paypal-subscribe-button')
+        }
+      }
+      document.body.appendChild(script)
     }
   }, [])
 
@@ -157,20 +193,22 @@ export default function Pricing() {
                 <Check size={18} /> أنت Premium ✓
               </button>
             ) : (
-              <button
-                onClick={handleSubscribe}
-                disabled={loading}
-                className="w-full py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {loading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
-                {loading ? 'جاري التحضير...' : 'اشترك الآن'}
-              </button>
+              <div className="space-y-3">
+                <div id="paypal-subscribe-button" className="w-full"></div>
+                {process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID ? (
+                  <p className="text-center text-xs text-gray-400">الدفع عبر PayPal</p>
+                ) : (
+                  <p className="text-center text-xs text-gray-400">
+                    PayPal غير مُعد بعد — أضف NEXT_PUBLIC_PAYPAL_CLIENT_ID
+                  </p>
+                )}
+              </div>
             )}
           </div>
         </div>
 
         <p className="text-center text-gray-400 text-sm mt-8">
-          الدفع آمن و مشفر بواسطة <span className="font-semibold">PayZone</span>
+          الدفع آمن و مشفر بواسطة <span className="font-semibold">PayPal</span>
         </p>
       </div>
     </div>
