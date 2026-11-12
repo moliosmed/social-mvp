@@ -32,6 +32,7 @@ export default function Pricing() {
 
   const supabase = createClient()
 
+  // جلب المستخدم و البروفايل
   useEffect(() => {
     const getData = async () => {
       const { data: { user } } = await supabase.auth.getUser()
@@ -43,52 +44,56 @@ export default function Pricing() {
     }
     getData()
 
-    // التحقق من نجاح الدفع
     const params = new URLSearchParams(window.location.search)
-    if (params.get('success') === '1') {
-      setSuccess(true)
-      // تحديث حالة البروفايل
-      if (user) {
-        supabase.from('profiles').select('*').eq('id', user.id).single()
-          .then(({ data }) => setProfile(data))
-      }
+    if (params.get('success') === '1') setSuccess(true)
+  }, [])
+
+  // رندر الـ PayPal button
+  useEffect(() => {
+    if (!user) return
+
+    const renderPaypal = () => {
+      if (!(window as any).paypalSdk?.Buttons) return
+      const el = document.getElementById('paypal-subscribe-button')
+      if (!el || el.children.length > 0) return
+      ;(window as any).paypalSdk.Buttons({
+        style: { shape: 'pill', color: 'blue', layout: 'vertical', label: 'subscribe' },
+        createSubscription: (data: any, actions: any) => {
+          return actions.subscription.create({
+            plan_id: process.env.NEXT_PUBLIC_PAYPAL_PLAN_ID,
+            custom_id: `${user.id}|premium_monthly`,
+            subscriber: { name: { given_name: profile?.full_name || profile?.username || 'User' } },
+          })
+        },
+        onApprove: (data: any) => {
+          fetch('/api/paypal/activate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id, subscriptionId: data.subscriptionID }),
+          }).then(() => {
+            setSuccess(true)
+            supabase.from('profiles').select('*').eq('id', user.id).single()
+              .then(({ data: p }) => setProfile(p))
+          })
+        },
+      }).render('#paypal-subscribe-button')
     }
 
-    // تحميل PayPal SDK
     const clientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID
-    if (clientId && !document.querySelector('script[data-paypal-sdk]')) {
-      const script = document.createElement('script')
-      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&vault=true&intent=subscription&locale=ar_MA&currency=MAD`
-      script.setAttribute('data-paypal-sdk', 'true')
-      script.setAttribute('data-namespace', 'paypalSdk')
-      script.onload = () => {
-        if ((window as any).paypalSdk && (window as any).paypalSdk.Buttons && user) {
-          ;(window as any).paypalSdk.Buttons({
-            style: { shape: 'pill', color: 'blue', layout: 'vertical', label: 'subscribe' },
-            createSubscription: (data: any, actions: any) => {
-              return actions.subscription.create({
-                plan_id: process.env.NEXT_PUBLIC_PAYPAL_PLAN_ID,
-                custom_id: `${user.id}|premium_monthly`,
-                subscriber: { name: { given_name: profile?.full_name || profile?.username || 'User' } },
-              })
-            },
-            onApprove: (data: any) => {
-              fetch('/api/paypal/activate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: user.id, subscriptionId: data.subscriptionID }),
-              }).then(() => {
-                setSuccess(true)
-                supabase.from('profiles').select('*').eq('id', user.id).single()
-                  .then(({ data: p }) => setProfile(p))
-              })
-            },
-          }).render('#paypal-subscribe-button')
-        }
-      }
-      document.body.appendChild(script)
+    if (!clientId) return
+
+    if (document.querySelector('script[data-paypal-sdk]')) {
+      renderPaypal()
+      return
     }
-  }, [])
+
+    const script = document.createElement('script')
+    script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&vault=true&intent=subscription&locale=ar_MA&currency=MAD`
+    script.setAttribute('data-paypal-sdk', 'true')
+    script.setAttribute('data-namespace', 'paypalSdk')
+    script.onload = renderPaypal
+    document.body.appendChild(script)
+  }, [user, profile])
 
   const handleSubscribe = async () => {
     if (!user) { window.location.href = '/'; return }
