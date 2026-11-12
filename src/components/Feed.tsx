@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Heart, Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2 } from 'lucide-react'
+import { Heart, Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -17,6 +17,7 @@ export default function Feed() {
   const [following, setFollowing] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [darkMode, setDarkMode] = useState(false)
+  const [profile, setProfile] = useState<any>(null)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
@@ -36,6 +37,8 @@ export default function Feed() {
       setUser(user)
       if (user) {
         await fetchFollowing(user.id)
+        const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+        setProfile(profileData)
         fetchPosts()
       }
     }
@@ -172,7 +175,14 @@ export default function Feed() {
     <div className={`min-h-screen ${bg} transition-colors duration-300`}>
       <header className={`sticky top-0 z-10 border-b px-4 py-3 shadow-sm ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} transition-colors duration-300`}>
         <div className="max-w-2xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
-          <h1 className="text-xl font-bold text-blue-600">Molios Empire</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-blue-600">Molios Empire</h1>
+            {profile?.premium && (
+              <span className="flex items-center gap-1 bg-gradient-to-l from-blue-600 to-blue-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                <Sparkles size={11} /> Premium
+              </span>
+            )}
+          </div>
           
           <div className="relative w-full sm:w-64">
             <Search className={`absolute right-3 top-1/2 -translate-y-1/2 ${textSecondary}`} size={20} />
@@ -195,6 +205,11 @@ export default function Feed() {
             <Link href="/profile" className={`flex items-center gap-2 text-sm transition ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-600 hover:text-blue-600'}`}>
               <User size={18} /> <span className="hidden sm:inline">البروفايل</span>
             </Link>
+            {!profile?.premium && (
+              <Link href="/pricing" className="flex items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full">
+                <Sparkles size={14} /> <span className="hidden sm:inline">Premium</span>
+              </Link>
+            )}
           </div>
         </div>
       </header>

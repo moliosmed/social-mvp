@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { ArrowLeft, Users, UserCheck, FileText, LogOut, Camera } from 'lucide-react'
+import { ArrowLeft, Users, UserCheck, FileText, LogOut, Camera, Sparkles } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Profile() {
@@ -115,8 +115,20 @@ export default function Profile() {
             </div>
             
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{profile.full_name || profile.username}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-gray-900">{profile.full_name || profile.username}</h1>
+                {profile.premium && (
+                  <span className="flex items-center gap-1 bg-gradient-to-l from-blue-600 to-blue-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                    <Sparkles size={11} /> Premium
+                  </span>
+                )}
+              </div>
               <p className="text-gray-500">@{profile.username}</p>
+              {!profile.premium && (
+                <Link href="/pricing" className="inline-flex items-center gap-1 mt-2 text-sm font-semibold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100">
+                  <Sparkles size={14} /> ترقية إلى Premium
+                </Link>
+              )}
               {uploading && <p className="text-sm text-blue-600 mt-1">جاري رفع الصورة...</p>}
             </div>
           </div>
