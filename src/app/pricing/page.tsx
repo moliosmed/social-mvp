@@ -136,6 +136,15 @@ export default function Pricing() {
           <p className="text-gray-500 text-lg">طور تجربتك و ادعم المنصة</p>
         </div>
 
+        {!user && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-4 rounded-xl mb-6 text-center">
+            <p className="font-semibold mb-2">🔒 خاصك تسجل الدخول باش تشترك</p>
+            <Link href="/" className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700">
+              تسجيل الدخول
+            </Link>
+          </div>
+        )}
+
         {success && (
           <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl mb-6 text-center">
             🎉 تم الاشتراك بنجاح! مرحبا بك في Premium
