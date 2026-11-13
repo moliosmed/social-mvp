@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Heart, Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Sparkles } from 'lucide-react'
+import { Heart, Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -17,7 +17,10 @@ export default function Feed() {
   const [following, setFollowing] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [darkMode, setDarkMode] = useState(false)
-  const [profile, setProfile] = useState<any>(null)
+  
+  // حالات الإشعارات
+  const [notifications, setNotifications] = useState<any[]>([])
+  const [showNotifications, setShowNotifications] = useState(false)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
@@ -37,19 +40,22 @@ export default function Feed() {
       setUser(user)
       if (user) {
         await fetchFollowing(user.id)
-        const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-        setProfile(profileData)
         fetchPosts()
+        fetchNotifications(user.id)
       }
     }
     getUser()
 
+    // Real-time channels
     const channel = supabase
       .channel('realtime-social')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, fetchPosts)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, fetchPosts)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, fetchPosts)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_likes' }, fetchPosts)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user?.id}` }, (payload) => {
+        setNotifications(prev => [payload.new, ...prev])
+      })
       .subscribe()
 
     return () => {
@@ -82,6 +88,40 @@ export default function Feed() {
     else if (data) setPosts(data)
   }
 
+  const fetchNotifications = async (userId: string) => {
+    const { data } = await supabase
+      .from('notifications')
+      .select(`
+        *,
+        actor:actor_id(username, avatar_url),
+        post:post_id(content)
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    if (data) setNotifications(data)
+  }
+
+  const markNotificationsAsRead = async () => {
+    if (!user) return
+    await supabase.from('notifications').update({ read: true }).eq('user_id', user.id).eq('read', false)
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+    setShowNotifications(true)
+  }
+
+  const unreadCount = notifications.filter(n => !n.read).length
+
+  const sendNotification = async (targetUserId: string, type: string, postId?: string, commentId?: string) => {
+    if (!user || targetUserId === user.id) return // ما نبعثو إشعار لأنفسنا
+    await supabase.from('notifications').insert({
+      user_id: targetUserId,
+      actor_id: user.id,
+      type,
+      post_id: postId || null,
+      comment_id: commentId || null
+    })
+  }
+
   const handleFollow = async (targetUserId: string) => {
     if (!user || targetUserId === user.id) return
     if (following.has(targetUserId)) {
@@ -90,6 +130,7 @@ export default function Feed() {
     } else {
       await supabase.from('follows').insert({ follower_id: user.id, following_id: targetUserId })
       setFollowing(prev => new Set(prev).add(targetUserId))
+      await sendNotification(targetUserId, 'follow')
     }
   }
 
@@ -107,7 +148,7 @@ export default function Feed() {
         const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName)
         imageUrl = publicUrl
       }
-      const { error: insertError } = await supabase.from('posts').insert({ user_id: user.id, content, image_url: imageUrl }).select()
+      const { data: inserted, error: insertError } = await supabase.from('posts').insert({ user_id: user.id, content, image_url: imageUrl }).select()
       if (insertError) throw insertError
       setContent(''); setImageFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -116,45 +157,44 @@ export default function Feed() {
     finally { setLoading(false) }
   }
 
-  const handleLike = async (postId: string) => {
+  const handleLike = async (postId: string, postOwnerId: string) => {
     const { data: existing } = await supabase.from('likes').select('id').eq('post_id', postId).eq('user_id', user.id).single()
-    if (existing) await supabase.from('likes').delete().eq('id', existing.id)
-    else await supabase.from('likes').insert({ post_id: postId, user_id: user.id })
-    fetchPosts()
-  }
-
-  const handleCommentLike = async (commentId: string) => {
-    const { data: existing } = await supabase
-      .from('comment_likes')
-      .select('id')
-      .eq('comment_id', commentId)
-      .eq('user_id', user.id)
-      .single()
-    
     if (existing) {
-      await supabase.from('comment_likes').delete().eq('id', existing.id)
+      await supabase.from('likes').delete().eq('id', existing.id)
     } else {
-      await supabase.from('comment_likes').insert({ comment_id: commentId, user_id: user.id })
+      await supabase.from('likes').insert({ post_id: postId, user_id: user.id })
+      await sendNotification(postOwnerId, 'like', postId)
     }
     fetchPosts()
   }
 
-  const handleComment = async (postId: string) => {
+  const handleCommentLike = async (commentId: string, commentOwnerId: string, postId: string) => {
+    const { data: existing } = await supabase.from('comment_likes').select('id').eq('comment_id', commentId).eq('user_id', user.id).single()
+    if (existing) {
+      await supabase.from('comment_likes').delete().eq('id', existing.id)
+    } else {
+      await supabase.from('comment_likes').insert({ comment_id: commentId, user_id: user.id })
+      await sendNotification(commentOwnerId, 'comment_like', postId, commentId)
+    }
+    fetchPosts()
+  }
+
+  const handleComment = async (postId: string, postOwnerId: string) => {
     const text = commentTexts[postId]
     if (!text?.trim()) return
-    await supabase.from('comments').insert({ post_id: postId, user_id: user.id, content: text })
+    const { data: inserted } = await supabase.from('comments').insert({ post_id: postId, user_id: user.id, content: text }).select()
     setCommentTexts({ ...commentTexts, [postId]: '' })
+    if (inserted && inserted[0]) {
+      await sendNotification(postOwnerId, 'comment', postId, inserted[0].id)
+    }
     fetchPosts()
   }
 
   const handleDeletePost = async (postId: string) => {
     if (!confirm('واش متأكد بغيتي تحيد هاد المنشور؟')) return
     const { error } = await supabase.from('posts').delete().eq('id', postId)
-    if (!error) {
-      fetchPosts()
-    } else {
-      alert('خطأ ف الحذف: ' + error.message)
-    }
+    if (!error) fetchPosts()
+    else alert('خطأ ف الحذف: ' + error.message)
   }
 
   if (!user) return null
@@ -171,18 +211,20 @@ export default function Feed() {
   const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-500'
   const inputBg = darkMode ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-200 text-gray-900'
 
+  const getNotificationText = (n: any) => {
+    const actorName = n.actor?.username || 'مستخدم'
+    if (n.type === 'like') return `<b>${actorName}</b> عجبو منشورك`
+    if (n.type === 'comment') return `<b>${actorName}</b> علق على منشورك`
+    if (n.type === 'comment_like') return `<b>${actorName}</b> عجبو تعليقك`
+    if (n.type === 'follow') return `<b>${actorName}</b> بدا كيتبعك`
+    return 'إشعار جديد'
+  }
+
   return (
     <div className={`min-h-screen ${bg} transition-colors duration-300`}>
-      <header className={`sticky top-0 z-10 border-b px-4 py-3 shadow-sm ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} transition-colors duration-300`}>
+      <header className={`sticky top-0 z-20 border-b px-4 py-3 shadow-sm ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} transition-colors duration-300`}>
         <div className="max-w-2xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-blue-600">Molios Empire</h1>
-            {profile?.premium && (
-              <span className="flex items-center gap-1 bg-gradient-to-l from-blue-600 to-blue-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                <Sparkles size={11} /> Premium
-              </span>
-            )}
-          </div>
+          <h1 className="text-xl font-bold text-blue-600">Molios Empire</h1>
           
           <div className="relative w-full sm:w-64">
             <Search className={`absolute right-3 top-1/2 -translate-y-1/2 ${textSecondary}`} size={20} />
@@ -196,6 +238,49 @@ export default function Feed() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* زر الإشعارات */}
+            <div className="relative">
+              <button 
+                onClick={markNotificationsAsRead}
+                className={`p-2 rounded-lg transition relative ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center animate-pulse">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* قائمة الإشعارات المنسدلة */}
+              {showNotifications && (
+                <div className={`absolute left-0 mt-2 w-80 rounded-xl shadow-xl border z-50 max-h-96 overflow-y-auto ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                  <div className={`p-3 border-b font-bold text-sm ${darkMode ? 'border-gray-700 text-gray-200' : 'border-gray-100 text-gray-800'}`}>
+                    الإشعارات
+                  </div>
+                  {notifications.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-gray-500">ما كاين حتى إشعار جديد 🎉</div>
+                  ) : (
+                    notifications.map((n) => (
+                      <div key={n.id} className={`p-3 border-b text-sm flex gap-3 items-start ${!n.read ? (darkMode ? 'bg-gray-700/50' : 'bg-blue-50/50') : ''} ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                        {n.actor?.avatar_url ? (
+                          <img src={n.actor.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs flex-shrink-0">
+                            {n.actor?.username?.[0]?.toUpperCase() || 'U'}
+                          </div>
+                        )}
+                        <div>
+                          <p className={textPrimary} dangerouslySetInnerHTML={{ __html: getNotificationText(n) }} />
+                          <p className="text-xs text-gray-500 mt-1">{new Date(n.created_at).toLocaleDateString('ar-MA')}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
             <button 
               onClick={() => setDarkMode(!darkMode)}
               className={`p-2 rounded-lg transition ${darkMode ? 'bg-gray-700 text-yellow-400 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
@@ -205,15 +290,11 @@ export default function Feed() {
             <Link href="/profile" className={`flex items-center gap-2 text-sm transition ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-600 hover:text-blue-600'}`}>
               <User size={18} /> <span className="hidden sm:inline">البروفايل</span>
             </Link>
-            {!profile?.premium && (
-              <Link href="/pricing" className="flex items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 px-3 py-1.5 rounded-full">
-                <Sparkles size={14} /> <span className="hidden sm:inline">Premium</span>
-              </Link>
-            )}
           </div>
         </div>
       </header>
 
+      {/* بقية الكود ديال المنشورات كتبقى نفس السابقة... */}
       <div className="max-w-2xl mx-auto p-4 space-y-6">
         {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">{error}</div>}
 
@@ -274,7 +355,7 @@ export default function Feed() {
               <p className={`${textPrimary} mb-3 whitespace-pre-wrap`}>{post.content}</p>
               {post.image_url && <img src={post.image_url} alt="Post" className="w-full rounded-lg mb-3 max-h-96 object-cover border border-gray-200" />}
               <div className="flex items-center gap-4 mb-2">
-                <button onClick={() => handleLike(post.id)} className={`flex items-center gap-1 transition ${post.likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}>
+                <button onClick={() => handleLike(post.id, post.user_id)} className={`flex items-center gap-1 transition ${post.likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}>
                   <Heart size={18} className={post.likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} /> <span>{post.likes?.length || 0}</span>
                 </button>
                 <button onClick={() => setShowComments({ ...showComments, [post.id]: !showComments[post.id] })} className={`flex items-center gap-1 transition ${textSecondary} hover:text-blue-500`}>
@@ -299,7 +380,7 @@ export default function Feed() {
                             <span className={textPrimary}>{comment.content}</span>
                           </div>
                           <button 
-                            onClick={() => handleCommentLike(comment.id)}
+                            onClick={() => handleCommentLike(comment.id, comment.user_id, post.id)}
                             className={`flex items-center gap-1 mt-1 text-xs transition ${comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}
                           >
                             <Heart size={12} className={comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} />
@@ -310,8 +391,8 @@ export default function Feed() {
                     </div>
                   ))}
                   <div className="flex gap-2">
-                    <input type="text" value={commentTexts[post.id] || ''} onChange={(e) => setCommentTexts({ ...commentTexts, [post.id]: e.target.value })} placeholder="كتب تعليق..." className={`flex-1 p-2 border rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm ${inputBg}`} onKeyPress={(e) => { if (e.key === 'Enter') handleComment(post.id) }} />
-                    <button onClick={() => handleComment(post.id)} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-700 transition">أرسل</button>
+                    <input type="text" value={commentTexts[post.id] || ''} onChange={(e) => setCommentTexts({ ...commentTexts, [post.id]: e.target.value })} placeholder="كتب تعليق..." className={`flex-1 p-2 border rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm ${inputBg}`} onKeyPress={(e) => { if (e.key === 'Enter') handleComment(post.id, post.user_id) }} />
+                    <button onClick={() => handleComment(post.id, post.user_id)} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-700 transition">أرسل</button>
                   </div>
                 </div>
               )}
