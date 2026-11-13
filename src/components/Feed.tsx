@@ -18,7 +18,6 @@ export default function Feed() {
   const [searchQuery, setSearchQuery] = useState('')
   const [darkMode, setDarkMode] = useState(false)
   
-  // حالات الإشعارات
   const [notifications, setNotifications] = useState<any[]>([])
   const [showNotifications, setShowNotifications] = useState(false)
   
@@ -34,6 +33,7 @@ export default function Feed() {
     localStorage.setItem('darkMode', darkMode.toString())
   }, [darkMode])
 
+  // useEffect الأول: جلب المستخدم
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
@@ -45,23 +45,30 @@ export default function Feed() {
       }
     }
     getUser()
+  }, [])
 
-    // Real-time channels
+  // useEffect الثاني: Real-time subscriptions (كيشتغل ملي user يتحمل)
+  useEffect(() => {
+    if (!user?.id) return // ⭐ مهم: ما نبدوش حتى يتحمل المستخدم
+
     const channel = supabase
       .channel('realtime-social')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, fetchPosts)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, fetchPosts)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, fetchPosts)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_likes' }, fetchPosts)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user?.id}` }, (payload) => {
-        setNotifications(prev => [payload.new, ...prev])
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+        // ⭐ نفلطرو فـ الـ state ماشي فـ subscription
+        if (payload.new.user_id === user.id) {
+          setNotifications(prev => [payload.new, ...prev])
+        }
       })
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [user?.id]) // ⭐ dependency على user.id
 
   const fetchFollowing = async (userId: string) => {
     const { data } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
@@ -106,13 +113,13 @@ export default function Feed() {
     if (!user) return
     await supabase.from('notifications').update({ read: true }).eq('user_id', user.id).eq('read', false)
     setNotifications(prev => prev.map(n => ({ ...n, read: true })))
-    setShowNotifications(true)
+    setShowNotifications(!showNotifications)
   }
 
   const unreadCount = notifications.filter(n => !n.read).length
 
   const sendNotification = async (targetUserId: string, type: string, postId?: string, commentId?: string) => {
-    if (!user || targetUserId === user.id) return // ما نبعثو إشعار لأنفسنا
+    if (!user || targetUserId === user.id) return
     await supabase.from('notifications').insert({
       user_id: targetUserId,
       actor_id: user.id,
@@ -148,7 +155,7 @@ export default function Feed() {
         const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName)
         imageUrl = publicUrl
       }
-      const { data: inserted, error: insertError } = await supabase.from('posts').insert({ user_id: user.id, content, image_url: imageUrl }).select()
+      const { error: insertError } = await supabase.from('posts').insert({ user_id: user.id, content, image_url: imageUrl }).select()
       if (insertError) throw insertError
       setContent(''); setImageFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -238,7 +245,6 @@ export default function Feed() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* زر الإشعارات */}
             <div className="relative">
               <button 
                 onClick={markNotificationsAsRead}
@@ -252,7 +258,6 @@ export default function Feed() {
                 )}
               </button>
 
-              {/* قائمة الإشعارات المنسدلة */}
               {showNotifications && (
                 <div className={`absolute left-0 mt-2 w-80 rounded-xl shadow-xl border z-50 max-h-96 overflow-y-auto ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                   <div className={`p-3 border-b font-bold text-sm ${darkMode ? 'border-gray-700 text-gray-200' : 'border-gray-100 text-gray-800'}`}>
@@ -294,7 +299,6 @@ export default function Feed() {
         </div>
       </header>
 
-      {/* بقية الكود ديال المنشورات كتبقى نفس السابقة... */}
       <div className="max-w-2xl mx-auto p-4 space-y-6">
         {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">{error}</div>}
 
