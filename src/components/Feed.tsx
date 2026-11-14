@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Heart, Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader } from 'lucide-react'
+import { Heart, Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2 } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -252,6 +252,26 @@ export default function Feed() {
     else alert('خطأ ف الحذف: ' + error.message)
   }
 
+  // 🌟 ميزة المشاركة الجديدة
+  const handleShare = async (post: any) => {
+    const shareData = {
+      title: 'منشور من Molios Empire',
+      text: post.content.substring(0, 100) + (post.content.length > 100 ? '...' : ''),
+      url: window.location.href
+    }
+    
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData)
+      } catch (err) {
+        console.log('Error sharing:', err)
+      }
+    } else {
+      navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`)
+      alert('تم نسخ رابط المنشور!')
+    }
+  }
+
   if (!user) return null
 
   const filteredPosts = posts.filter(post => 
@@ -412,6 +432,8 @@ export default function Feed() {
                 </div>
                 <p className={`${textPrimary} mb-3 whitespace-pre-wrap`}>{post.content}</p>
                 {post.image_url && <img src={post.image_url} alt="Post" className="w-full rounded-lg mb-3 max-h-96 object-cover border border-gray-200" />}
+                
+                {/* أزرار التفاعل */}
                 <div className="flex items-center gap-4 mb-2">
                   <button onClick={() => handleLike(post.id, post.user_id)} className={`flex items-center gap-1 transition ${post.likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}>
                     <Heart size={18} className={post.likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} /> <span>{post.likes?.length || 0}</span>
@@ -419,7 +441,12 @@ export default function Feed() {
                   <button onClick={() => setShowComments({ ...showComments, [post.id]: !showComments[post.id] })} className={`flex items-center gap-1 transition ${textSecondary} hover:text-blue-500`}>
                     <MessageCircle size={18} /> <span>{post.comments?.length || 0}</span>
                   </button>
+                  {/* 🌟 زر المشاركة الجديد */}
+                  <button onClick={() => handleShare(post)} className={`flex items-center gap-1 transition ${textSecondary} hover:text-green-500`}>
+                    <Share2 size={18} /> <span className="text-sm">مشاركة</span>
+                  </button>
                 </div>
+
                 {showComments[post.id] && (
                   <div className={`mt-4 space-y-3 border-t pt-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                     {post.comments?.map((comment: any, idx: number) => (
