@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Heart, Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell } from 'lucide-react'
+import { Heart, Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -14,6 +14,8 @@ export default function Feed() {
   const [showComments, setShowComments] = useState<{[key: string]: boolean}>({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
   const [following, setFollowing] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [darkMode, setDarkMode] = useState(false)
@@ -22,7 +24,10 @@ export default function Feed() {
   const [showNotifications, setShowNotifications] = useState(false)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const observerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
+
+  const POSTS_PER_PAGE = 10
 
   useEffect(() => {
     const saved = localStorage.getItem('darkMode')
@@ -33,32 +38,29 @@ export default function Feed() {
     localStorage.setItem('darkMode', darkMode.toString())
   }, [darkMode])
 
-  // useEffect الأول: جلب المستخدم
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user)
       if (user) {
         await fetchFollowing(user.id)
-        fetchPosts()
+        await fetchPosts(true) // أول تحميل
         fetchNotifications(user.id)
       }
     }
     getUser()
   }, [])
 
-  // useEffect الثاني: Real-time subscriptions (كيشتغل ملي user يتحمل)
   useEffect(() => {
-    if (!user?.id) return // ⭐ مهم: ما نبدوش حتى يتحمل المستخدم
+    if (!user?.id) return
 
     const channel = supabase
       .channel('realtime-social')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, fetchPosts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, fetchPosts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, fetchPosts)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_likes' }, fetchPosts)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => fetchPosts(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => fetchPosts(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => fetchPosts(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_likes' }, () => fetchPosts(true))
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
-        // ⭐ نفلطرو فـ الـ state ماشي فـ subscription
         if (payload.new.user_id === user.id) {
           setNotifications(prev => [payload.new, ...prev])
         }
@@ -68,14 +70,36 @@ export default function Feed() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user?.id]) // ⭐ dependency على user.id
+  }, [user?.id])
+
+  // Infinite Scroll Observer
+  useEffect(() => {
+    if (!observerRef.current) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore) {
+          loadMorePosts()
+        }
+      },
+      { threshold: 0.5 }
+    )
+
+    observer.observe(observerRef.current)
+
+    return () => observer.disconnect()
+  }, [hasMore, loadingMore, posts.length])
 
   const fetchFollowing = async (userId: string) => {
     const { data } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
     if (data) setFollowing(new Set(data.map(f => f.following_id)))
   }
 
-  const fetchPosts = async () => {
+  const fetchPosts = async (reset = false) => {
+    setLoading(true)
+    const from = reset ? 0 : posts.length
+    const to = from + POSTS_PER_PAGE - 1
+
     const { data, error } = await supabase
       .from('posts')
       .select(`
@@ -91,8 +115,26 @@ export default function Feed() {
         )
       `)
       .order('created_at', { ascending: false })
-    if (error) setError('خطأ ف جلب المنشورات: ' + error.message)
-    else if (data) setPosts(data)
+      .range(from, to)
+
+    if (error) {
+      setError('خطأ ف جلب المنشورات: ' + error.message)
+    } else if (data) {
+      if (reset) {
+        setPosts(data)
+      } else {
+        setPosts(prev => [...prev, ...data])
+      }
+      setHasMore(data.length === POSTS_PER_PAGE)
+    }
+    setLoading(false)
+  }
+
+  const loadMorePosts = async () => {
+    if (loadingMore || !hasMore) return
+    setLoadingMore(true)
+    await fetchPosts(false)
+    setLoadingMore(false)
   }
 
   const fetchNotifications = async (userId: string) => {
@@ -159,7 +201,7 @@ export default function Feed() {
       if (insertError) throw insertError
       setContent(''); setImageFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
-      fetchPosts()
+      await fetchPosts(true)
     } catch (err: any) { setError('خطأ: ' + err.message) }
     finally { setLoading(false) }
   }
@@ -172,7 +214,7 @@ export default function Feed() {
       await supabase.from('likes').insert({ post_id: postId, user_id: user.id })
       await sendNotification(postOwnerId, 'like', postId)
     }
-    fetchPosts()
+    await fetchPosts(true)
   }
 
   const handleCommentLike = async (commentId: string, commentOwnerId: string, postId: string) => {
@@ -183,7 +225,7 @@ export default function Feed() {
       await supabase.from('comment_likes').insert({ comment_id: commentId, user_id: user.id })
       await sendNotification(commentOwnerId, 'comment_like', postId, commentId)
     }
-    fetchPosts()
+    await fetchPosts(true)
   }
 
   const handleComment = async (postId: string, postOwnerId: string) => {
@@ -194,13 +236,13 @@ export default function Feed() {
     if (inserted && inserted[0]) {
       await sendNotification(postOwnerId, 'comment', postId, inserted[0].id)
     }
-    fetchPosts()
+    await fetchPosts(true)
   }
 
   const handleDeletePost = async (postId: string) => {
     if (!confirm('واش متأكد بغيتي تحيد هاد المنشور؟')) return
     const { error } = await supabase.from('posts').delete().eq('id', postId)
-    if (!error) fetchPosts()
+    if (!error) await fetchPosts(true)
     else alert('خطأ ف الحذف: ' + error.message)
   }
 
@@ -330,78 +372,93 @@ export default function Feed() {
             {searchQuery ? 'ما لقينا والو كيطابق البحث ديالك 🔍' : 'مازال ما كاين حتى منشور'}
           </p>
         ) : (
-          filteredPosts.map(post => (
-            <div key={post.id} className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  {post.profiles?.avatar_url ? (
-                    <img src={post.profiles.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
-                  ) : (
-                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
-                      {post.profiles?.username?.[0]?.toUpperCase() || 'U'}
-                    </div>
-                  )}
-                  <span className={`font-bold ${textPrimary}`}>{post.profiles?.full_name || post.profiles?.username}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {post.user_id === user.id && (
-                    <button onClick={() => handleDeletePost(post.id)} className="text-gray-400 hover:text-red-600 transition p-1" title="حذف المنشور">
-                      <Trash2 size={18} />
-                    </button>
-                  )}
-                  {post.user_id !== user.id && (
-                    <button onClick={() => handleFollow(post.profiles.id)} className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium transition ${following.has(post.profiles.id) ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
-                      {following.has(post.profiles.id) ? <><Check size={16} /> متابع</> : <><UserPlus size={16} /> متابعة</>}
-                    </button>
-                  )}
-                </div>
-              </div>
-              <p className={`${textPrimary} mb-3 whitespace-pre-wrap`}>{post.content}</p>
-              {post.image_url && <img src={post.image_url} alt="Post" className="w-full rounded-lg mb-3 max-h-96 object-cover border border-gray-200" />}
-              <div className="flex items-center gap-4 mb-2">
-                <button onClick={() => handleLike(post.id, post.user_id)} className={`flex items-center gap-1 transition ${post.likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}>
-                  <Heart size={18} className={post.likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} /> <span>{post.likes?.length || 0}</span>
-                </button>
-                <button onClick={() => setShowComments({ ...showComments, [post.id]: !showComments[post.id] })} className={`flex items-center gap-1 transition ${textSecondary} hover:text-blue-500`}>
-                  <MessageCircle size={18} /> <span>{post.comments?.length || 0}</span>
-                </button>
-              </div>
-              {showComments[post.id] && (
-                <div className={`mt-4 space-y-3 border-t pt-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
-                  {post.comments?.map((comment: any, idx: number) => (
-                    <div key={idx} className={`p-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                      <div className="flex items-start gap-2">
-                        {comment.profiles?.avatar_url ? (
-                          <img src={comment.profiles.avatar_url} alt="Avatar" className="w-6 h-6 rounded-full object-cover" />
-                        ) : (
-                          <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">
-                            {comment.profiles?.username?.[0]?.toUpperCase() || 'U'}
-                          </div>
-                        )}
-                        <div className="flex-1">
-                          <div>
-                            <span className={`font-bold ${textPrimary}`}>{comment.profiles?.username}: </span>
-                            <span className={textPrimary}>{comment.content}</span>
-                          </div>
-                          <button 
-                            onClick={() => handleCommentLike(comment.id, comment.user_id, post.id)}
-                            className={`flex items-center gap-1 mt-1 text-xs transition ${comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}
-                          >
-                            <Heart size={12} className={comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} />
-                            <span>{comment.comment_likes?.length || 0}</span>
-                          </button>
-                        </div>
+          <>
+            {filteredPosts.map(post => (
+              <div key={post.id} className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    {post.profiles?.avatar_url ? (
+                      <img src={post.profiles.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+                        {post.profiles?.username?.[0]?.toUpperCase() || 'U'}
                       </div>
-                    </div>
-                  ))}
-                  <div className="flex gap-2">
-                    <input type="text" value={commentTexts[post.id] || ''} onChange={(e) => setCommentTexts({ ...commentTexts, [post.id]: e.target.value })} placeholder="كتب تعليق..." className={`flex-1 p-2 border rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm ${inputBg}`} onKeyPress={(e) => { if (e.key === 'Enter') handleComment(post.id, post.user_id) }} />
-                    <button onClick={() => handleComment(post.id, post.user_id)} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-700 transition">أرسل</button>
+                    )}
+                    <span className={`font-bold ${textPrimary}`}>{post.profiles?.full_name || post.profiles?.username}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {post.user_id === user.id && (
+                      <button onClick={() => handleDeletePost(post.id)} className="text-gray-400 hover:text-red-600 transition p-1" title="حذف المنشور">
+                        <Trash2 size={18} />
+                      </button>
+                    )}
+                    {post.user_id !== user.id && (
+                      <button onClick={() => handleFollow(post.profiles.id)} className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium transition ${following.has(post.profiles.id) ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+                        {following.has(post.profiles.id) ? <><Check size={16} /> متابع</> : <><UserPlus size={16} /> متابعة</>}
+                      </button>
+                    )}
                   </div>
                 </div>
+                <p className={`${textPrimary} mb-3 whitespace-pre-wrap`}>{post.content}</p>
+                {post.image_url && <img src={post.image_url} alt="Post" className="w-full rounded-lg mb-3 max-h-96 object-cover border border-gray-200" />}
+                <div className="flex items-center gap-4 mb-2">
+                  <button onClick={() => handleLike(post.id, post.user_id)} className={`flex items-center gap-1 transition ${post.likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}>
+                    <Heart size={18} className={post.likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} /> <span>{post.likes?.length || 0}</span>
+                  </button>
+                  <button onClick={() => setShowComments({ ...showComments, [post.id]: !showComments[post.id] })} className={`flex items-center gap-1 transition ${textSecondary} hover:text-blue-500`}>
+                    <MessageCircle size={18} /> <span>{post.comments?.length || 0}</span>
+                  </button>
+                </div>
+                {showComments[post.id] && (
+                  <div className={`mt-4 space-y-3 border-t pt-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                    {post.comments?.map((comment: any, idx: number) => (
+                      <div key={idx} className={`p-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                        <div className="flex items-start gap-2">
+                          {comment.profiles?.avatar_url ? (
+                            <img src={comment.profiles.avatar_url} alt="Avatar" className="w-6 h-6 rounded-full object-cover" />
+                          ) : (
+                            <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">
+                              {comment.profiles?.username?.[0]?.toUpperCase() || 'U'}
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <div>
+                              <span className={`font-bold ${textPrimary}`}>{comment.profiles?.username}: </span>
+                              <span className={textPrimary}>{comment.content}</span>
+                            </div>
+                            <button 
+                              onClick={() => handleCommentLike(comment.id, comment.user_id, post.id)}
+                              className={`flex items-center gap-1 mt-1 text-xs transition ${comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}
+                            >
+                              <Heart size={12} className={comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} />
+                              <span>{comment.comment_likes?.length || 0}</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex gap-2">
+                      <input type="text" value={commentTexts[post.id] || ''} onChange={(e) => setCommentTexts({ ...commentTexts, [post.id]: e.target.value })} placeholder="كتب تعليق..." className={`flex-1 p-2 border rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm ${inputBg}`} onKeyPress={(e) => { if (e.key === 'Enter') handleComment(post.id, post.user_id) }} />
+                      <button onClick={() => handleComment(post.id, post.user_id)} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-700 transition">أرسل</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+            
+            {/* Infinite Scroll Trigger */}
+            <div ref={observerRef} className="flex justify-center py-4">
+              {loadingMore && (
+                <div className="flex items-center gap-2 text-gray-500">
+                  <Loader className="animate-spin" size={20} />
+                  <span>جاري تحميل المزيد...</span>
+                </div>
+              )}
+              {!hasMore && posts.length > 0 && (
+                <p className="text-gray-400 text-sm">وصلتي للنهاية 🎉</p>
               )}
             </div>
-          ))
+          </>
         )}
       </div>
     </div>
