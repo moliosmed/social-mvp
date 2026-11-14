@@ -12,8 +12,8 @@ export default function Messages() {
   const [messages, setMessages] = useState<any[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   
-  // حالات المودال
   const [showNewChatModal, setShowNewChatModal] = useState(false)
   const [allUsers, setAllUsers] = useState<any[]>([])
   const [searchUser, setSearchUser] = useState('')
@@ -38,9 +38,7 @@ export default function Messages() {
     const channel = supabase
       .channel('realtime-messages')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
-        if (selectedConversation) {
-          fetchMessages(selectedConversation.id)
-        }
+        if (selectedConversation) fetchMessages(selectedConversation.id)
         fetchConversations(user.id)
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => {
@@ -48,9 +46,7 @@ export default function Messages() {
       })
       .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => { supabase.removeChannel(channel) }
   }, [user?.id, selectedConversation])
 
   useEffect(() => {
@@ -58,7 +54,7 @@ export default function Messages() {
   }, [messages])
 
   const fetchConversations = async (userId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('conversations')
       .select(`
         *,
@@ -68,20 +64,22 @@ export default function Messages() {
       .or(`participant_1.eq.${userId},participant_2.eq.${userId}`)
       .order('last_message_at', { ascending: false })
     
+    if (error) console.error('Error fetching conversations:', error)
     if (data) setConversations(data)
   }
 
   const fetchAllUsers = async (currentUserId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id, username, full_name, avatar_url')
       .neq('id', currentUserId)
     
+    if (error) console.error('Error fetching users:', error)
     if (data) setAllUsers(data)
   }
 
   const fetchMessages = async (conversationId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('messages')
       .select(`
         *,
@@ -90,45 +88,64 @@ export default function Messages() {
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
     
+    if (error) console.error('Error fetching messages:', error)
     if (data) setMessages(data)
   }
 
   const startConversation = async (otherUserId: string) => {
     if (!user) return
+    setError('')
     
-    // Check if conversation exists
-    const { data: existing } = await supabase
-      .from('conversations')
-      .select(`
-        *,
-        participant_1_profile:participant_1(username, avatar_url, full_name),
-        participant_2_profile:participant_2(username, avatar_url, full_name)
-      `)
-      .or(`and(participant_1.eq.${user.id},participant_2.eq.${otherUserId}),and(participant_1.eq.${otherUserId},participant_2.eq.${user.id})`)
-      .single()
-    
-    let conversation: any
-    
-    if (existing) {
-      conversation = existing
-    } else {
-      const { data: newConv } = await supabase
+    try {
+      // 1. نشوفو واش كاينة محادثة موجودة
+      const { data: allConvs, error: fetchError } = await supabase
         .from('conversations')
-        .insert({ participant_1: user.id, participant_2: otherUserId })
         .select(`
           *,
           participant_1_profile:participant_1(username, avatar_url, full_name),
           participant_2_profile:participant_2(username, avatar_url, full_name)
         `)
-        .single()
+        .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
       
-      conversation = newConv
+      if (fetchError) throw fetchError
+      
+      // 2. نلقاو المحادثة مع المستخدم المختار
+      const existing = allConvs?.find(c => 
+        (c.participant_1 === user.id && c.participant_2 === otherUserId) ||
+        (c.participant_1 === otherUserId && c.participant_2 === user.id)
+      )
+      
+      let conversation: any
+      
+      if (existing) {
+        conversation = existing
+      } else {
+        // 3. نخلقو محادثة جديدة
+        const { data: newConv, error: insertError } = await supabase
+          .from('conversations')
+          .insert({ 
+            participant_1: user.id, 
+            participant_2: otherUserId 
+          })
+          .select(`
+            *,
+            participant_1_profile:participant_1(username, avatar_url, full_name),
+            participant_2_profile:participant_2(username, avatar_url, full_name)
+          `)
+          .single()
+        
+        if (insertError) throw insertError
+        conversation = newConv
+      }
+      
+      setSelectedConversation(conversation)
+      fetchMessages(conversation.id)
+      fetchConversations(user.id)
+      setShowNewChatModal(false)
+    } catch (err: any) {
+      console.error('Error starting conversation:', err)
+      setError('خطأ ف بدء المحادثة: ' + err.message)
     }
-    
-    setSelectedConversation(conversation)
-    fetchMessages(conversation.id)
-    fetchConversations(user.id)
-    setShowNewChatModal(false)
   }
 
   const sendMessage = async (e: any) => {
@@ -188,8 +205,13 @@ export default function Messages() {
         </div>
       </header>
 
+      {error && (
+        <div className="max-w-4xl mx-auto p-4">
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">{error}</div>
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto p-4 flex gap-4 h-[calc(100vh-100px)]">
-        {/* قائمة المحادثات */}
         <div className="w-1/3 bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 overflow-y-auto">
           <div className="p-3 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <MessageCircle size={18} /> المحادثات
@@ -242,11 +264,9 @@ export default function Messages() {
           )}
         </div>
 
-        {/* منطقة الرسائل */}
         <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 flex flex-col">
           {selectedConversation ? (
             <>
-              {/* رأس المحادثة */}
               <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-3">
                 {(() => {
                   const other = getOtherParticipant(selectedConversation)
@@ -268,7 +288,6 @@ export default function Messages() {
                 </div>
               </div>
 
-              {/* الرسائل */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {messages.length === 0 ? (
                   <div className="h-full flex items-center justify-center text-gray-500 text-sm">
@@ -298,7 +317,6 @@ export default function Messages() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* إدخال الرسالة */}
               <form onSubmit={sendMessage} className="p-3 border-t border-gray-100 dark:border-gray-700 flex gap-2">
                 <input
                   type="text"
@@ -333,7 +351,6 @@ export default function Messages() {
         </div>
       </div>
 
-      {/* Modal لاختيار مستخدم */}
       {showNewChatModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md">
