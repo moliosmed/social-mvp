@@ -245,6 +245,13 @@ export default function Feed() {
     else alert('خطأ ف الحذف: ' + error.message)
   }
 
+  const handleDeleteComment = async (commentId: string) => {
+    if (!confirm('واش متأكد بغيتي تحيد هاد التعليق؟')) return
+    const { error } = await supabase.from('comments').delete().eq('id', commentId)
+    if (!error) await fetchPosts(true)
+    else alert('خطأ ف الحذف: ' + error.message)
+  }
+
   if (!user) return null
 
   const filteredPosts = posts.filter(post => 
@@ -426,9 +433,20 @@ export default function Feed() {
                             </div>
                           )}
                           <div className="flex-1">
-                            <div>
-                              <span className={`font-bold ${textPrimary}`}>{comment.profiles?.username}: </span>
-                              <span className={textPrimary}>{comment.content}</span>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <span className={`font-bold ${textPrimary}`}>{comment.profiles?.username}: </span>
+                                <span className={textPrimary}>{comment.content}</span>
+                              </div>
+                              {comment.user_id === user.id && (
+                                <button 
+                                  onClick={() => handleDeleteComment(comment.id)}
+                                  className="text-gray-400 hover:text-red-600 transition p-1 flex-shrink-0"
+                                  title="حذف التعليق"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
                             </div>
                             <button 
                               onClick={() => handleCommentLike(comment.id, comment.user_id, post.id)}
