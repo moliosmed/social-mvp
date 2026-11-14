@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { ArrowLeft, Send, MessageCircle, User } from 'lucide-react'
+import { ArrowLeft, Send, MessageCircle, Plus, X, Users } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Messages() {
@@ -13,6 +13,11 @@ export default function Messages() {
   const [newMessage, setNewMessage] = useState('')
   const [loading, setLoading] = useState(false)
   
+  // حالات المودال
+  const [showNewChatModal, setShowNewChatModal] = useState(false)
+  const [allUsers, setAllUsers] = useState<any[]>([])
+  const [searchUser, setSearchUser] = useState('')
+  
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
@@ -22,6 +27,7 @@ export default function Messages() {
       if (!user) { window.location.href = '/'; return }
       setUser(user)
       fetchConversations(user.id)
+      fetchAllUsers(user.id)
     }
     getUser()
   }, [])
@@ -35,6 +41,9 @@ export default function Messages() {
         if (selectedConversation) {
           fetchMessages(selectedConversation.id)
         }
+        fetchConversations(user.id)
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => {
         fetchConversations(user.id)
       })
       .subscribe()
@@ -62,6 +71,15 @@ export default function Messages() {
     if (data) setConversations(data)
   }
 
+  const fetchAllUsers = async (currentUserId: string) => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, username, full_name, avatar_url')
+      .neq('id', currentUserId)
+    
+    if (data) setAllUsers(data)
+  }
+
   const fetchMessages = async (conversationId: string) => {
     const { data } = await supabase
       .from('messages')
@@ -81,27 +99,36 @@ export default function Messages() {
     // Check if conversation exists
     const { data: existing } = await supabase
       .from('conversations')
-      .select('*')
+      .select(`
+        *,
+        participant_1_profile:participant_1(username, avatar_url, full_name),
+        participant_2_profile:participant_2(username, avatar_url, full_name)
+      `)
       .or(`and(participant_1.eq.${user.id},participant_2.eq.${otherUserId}),and(participant_1.eq.${otherUserId},participant_2.eq.${user.id})`)
       .single()
     
-    let conversationId: string
+    let conversation: any
     
     if (existing) {
-      conversationId = existing.id
+      conversation = existing
     } else {
       const { data: newConv } = await supabase
         .from('conversations')
         .insert({ participant_1: user.id, participant_2: otherUserId })
-        .select()
+        .select(`
+          *,
+          participant_1_profile:participant_1(username, avatar_url, full_name),
+          participant_2_profile:participant_2(username, avatar_url, full_name)
+        `)
         .single()
       
-      conversationId = newConv.id
+      conversation = newConv
     }
     
-    setSelectedConversation({ id: conversationId })
-    fetchMessages(conversationId)
+    setSelectedConversation(conversation)
+    fetchMessages(conversation.id)
     fetchConversations(user.id)
+    setShowNewChatModal(false)
   }
 
   const sendMessage = async (e: any) => {
@@ -134,27 +161,50 @@ export default function Messages() {
     return conv.participant_1 === user.id ? conv.participant_2_profile : conv.participant_1_profile
   }
 
+  const filteredUsers = allUsers.filter(u => 
+    u.username?.toLowerCase().includes(searchUser.toLowerCase()) ||
+    u.full_name?.toLowerCase().includes(searchUser.toLowerCase())
+  )
+
   if (!user) return null
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <header className="sticky top-0 z-10 border-b px-4 py-3 shadow-sm bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-blue-600 transition">
-            <ArrowLeft size={20} /> رجوع
-          </Link>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">الرسائل</h1>
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-blue-600 transition">
+              <ArrowLeft size={20} /> رجوع
+            </Link>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white">الرسائل</h1>
+          </div>
+          
+          <button 
+            onClick={() => setShowNewChatModal(true)}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm font-medium"
+          >
+            <Plus size={18} /> محادثة جديدة
+          </button>
         </div>
       </header>
 
       <div className="max-w-4xl mx-auto p-4 flex gap-4 h-[calc(100vh-100px)]">
         {/* قائمة المحادثات */}
         <div className="w-1/3 bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 overflow-y-auto">
-          <div className="p-3 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-900 dark:text-white">
-            المحادثات
+          <div className="p-3 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <MessageCircle size={18} /> المحادثات
           </div>
           {conversations.length === 0 ? (
-            <div className="p-4 text-center text-sm text-gray-500">ما كاين حتى محادثة</div>
+            <div className="p-6 text-center text-sm text-gray-500">
+              <Users size={32} className="mx-auto mb-2 opacity-30" />
+              <p>ما كاين حتى محادثة</p>
+              <button 
+                onClick={() => setShowNewChatModal(true)}
+                className="mt-3 text-blue-600 hover:text-blue-700 font-medium text-sm"
+              >
+                + ابدأ محادثة جديدة
+              </button>
+            </div>
           ) : (
             conversations.map(conv => {
               const other = getOtherParticipant(conv)
@@ -220,25 +270,31 @@ export default function Messages() {
 
               {/* الرسائل */}
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {messages.map(msg => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.sender_id === user.id ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[70%] p-3 rounded-lg ${
-                        msg.sender_id === user.id
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
-                      }`}
-                    >
-                      <p className="text-sm">{msg.content}</p>
-                      <p className={`text-xs mt-1 ${msg.sender_id === user.id ? 'text-blue-100' : 'text-gray-500'}`}>
-                        {new Date(msg.created_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
+                {messages.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-gray-500 text-sm">
+                    ابدأ المحادثة بإرسال رسالة 👋
                   </div>
-                ))}
+                ) : (
+                  messages.map(msg => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.sender_id === user.id ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div
+                        className={`max-w-[70%] p-3 rounded-lg ${
+                          msg.sender_id === user.id
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
+                        }`}
+                      >
+                        <p className="text-sm">{msg.content}</p>
+                        <p className={`text-xs mt-1 ${msg.sender_id === user.id ? 'text-blue-100' : 'text-gray-500'}`}>
+                          {new Date(msg.created_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
                 <div ref={messagesEndRef} />
               </div>
 
@@ -265,11 +321,69 @@ export default function Messages() {
               <div className="text-center">
                 <MessageCircle size={48} className="mx-auto mb-2 opacity-50" />
                 <p>اختار محادثة أو ابدأ واحدة جديدة</p>
+                <button 
+                  onClick={() => setShowNewChatModal(true)}
+                  className="mt-3 text-blue-600 hover:text-blue-700 font-medium text-sm"
+                >
+                  + محادثة جديدة
+                </button>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Modal لاختيار مستخدم */}
+      {showNewChatModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">محادثة جديدة</h2>
+              <button onClick={() => setShowNewChatModal(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-4">
+              <input
+                type="text"
+                value={searchUser}
+                onChange={(e) => setSearchUser(e.target.value)}
+                placeholder="ابحث عن مستخدم..."
+                className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white mb-3 focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              
+              <div className="max-h-96 overflow-y-auto space-y-2">
+                {filteredUsers.length === 0 ? (
+                  <p className="text-center text-gray-500 py-4">ما لقينا حتى مستخدم</p>
+                ) : (
+                  filteredUsers.map(u => (
+                    <div
+                      key={u.id}
+                      onClick={() => startConversation(u.id)}
+                      className="p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer flex items-center gap-3 transition"
+                    >
+                      {u.avatar_url ? (
+                        <img src={u.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+                          {u.username?.[0]?.toUpperCase() || 'U'}
+                        </div>
+                      )}
+                      <div>
+                        <p className="font-semibold text-gray-900 dark:text-white text-sm">
+                          {u.full_name || u.username}
+                        </p>
+                        <p className="text-xs text-gray-500">@{u.username}</p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
