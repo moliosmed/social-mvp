@@ -44,7 +44,7 @@ export default function Feed() {
       setUser(user)
       if (user) {
         await fetchFollowing(user.id)
-        await fetchPosts(true) // أول تحميل
+        await fetchPosts(true)
         fetchNotifications(user.id)
       }
     }
@@ -72,7 +72,6 @@ export default function Feed() {
     }
   }, [user?.id])
 
-  // Infinite Scroll Observer
   useEffect(() => {
     if (!observerRef.current) return
 
@@ -334,6 +333,11 @@ export default function Feed() {
             >
               {darkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
+            
+            <Link href="/messages" className={`flex items-center gap-2 text-sm transition ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-600 hover:text-blue-600'}`}>
+              <MessageCircle size={18} /> <span className="hidden sm:inline">الرسائل</span>
+            </Link>
+            
             <Link href="/profile" className={`flex items-center gap-2 text-sm transition ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-600 hover:text-blue-600'}`}>
               <User size={18} /> <span className="hidden sm:inline">البروفايل</span>
             </Link>
@@ -446,7 +450,6 @@ export default function Feed() {
               </div>
             ))}
             
-            {/* Infinite Scroll Trigger */}
             <div ref={observerRef} className="flex justify-center py-4">
               {loadingMore && (
                 <div className="flex items-center gap-2 text-gray-500">
