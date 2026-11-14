@@ -252,22 +252,34 @@ export default function Feed() {
     else alert('خطأ ف الحذف: ' + error.message)
   }
 
-  // 🌟 ميزة المشاركة الجديدة
+  // 🌟 ميزة المشاركة
   const handleShare = async (post: any) => {
-    const shareData = {
-      title: 'منشور من Molios Empire',
-      text: post.content.substring(0, 100) + (post.content.length > 100 ? '...' : ''),
-      url: window.location.href
-    }
-    
+    const url = window.location.href
+    const content = post.content || ''
+    const text = content.substring(0, 100) + (content.length > 100 ? '...' : '')
+
     if (navigator.share) {
       try {
-        await navigator.share(shareData)
-      } catch (err) {
-        console.log('Error sharing:', err)
+        await navigator.share({ title: 'منشور من Molios Empire', text, url })
+        return
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return
       }
-    } else {
-      navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`)
+    }
+
+    const payload = `${text}\n${url}`
+    try {
+      await navigator.clipboard.writeText(payload)
+      alert('تم نسخ رابط المنشور!')
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = payload
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
       alert('تم نسخ رابط المنشور!')
     }
   }
