@@ -1,9 +1,8 @@
-// @ts-nocheck
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -39,9 +38,12 @@ export default function Feed() {
   const [viewingStory, setViewingStory] = useState<any | null>(null)
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0)
   
-  // 🔔 Toast Notifications
   const [toasts, setToasts] = useState<any[]>([])
   const [soundEnabled, setSoundEnabled] = useState(true)
+  
+  // 📱 حالات إشعارات المتصفح
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const [pushPermission, setPushPermission] = useState<NotificationPermission>('default')
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const storyInputRef = useRef<HTMLInputElement>(null)
@@ -67,6 +69,17 @@ export default function Feed() {
   useEffect(() => {
     localStorage.setItem('darkMode', darkMode.toString())
   }, [darkMode])
+
+  // 📱 تحميل حالة push من localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPushPermission(Notification.permission)
+      const saved = localStorage.getItem('pushEnabled')
+      if (saved === 'true' && Notification.permission === 'granted') {
+        setPushEnabled(true)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const getUser = async () => {
@@ -94,14 +107,14 @@ export default function Feed() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_likes' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks' }, () => fetchBookmarks(user.id))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, () => fetchStories())
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, async (payload) => {
         if (payload.new.user_id === user.id) {
           setNotifications(prev => [payload.new, ...prev])
-          // 🔔 إظهار Toast
           showToast(payload.new)
-          // 🔔 تشغيل الصوت
-          if (soundEnabled) {
-            playNotificationSound()
+          if (soundEnabled) playNotificationSound()
+          // 📱 إظهار إشعار المتصفح
+          if (pushEnabled) {
+            await showBrowserNotification(payload.new)
           }
         }
       })
@@ -110,7 +123,7 @@ export default function Feed() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user?.id, soundEnabled])
+  }, [user?.id, soundEnabled, pushEnabled])
 
   useEffect(() => {
     if (!observerRef.current) return
@@ -129,27 +142,111 @@ export default function Feed() {
     return () => observer.disconnect()
   }, [hasMore, loadingMore, posts.length])
 
-  // 🔔 دالة إظهار Toast
+  // 🔔 Toast
   const showToast = (notification: any) => {
     const toast = {
       id: Date.now(),
       message: getNotificationText(notification),
       type: notification.type
     }
-    
     setToasts(prev => [...prev, toast])
-    
-    // إخفاء بعد 5 ثواني
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== toast.id))
     }, 5000)
   }
 
-  // 🔔 تشغيل صوت التنبيه
   const playNotificationSound = () => {
     const audio = new Audio('data:audio/wav;base64,UklGNoaFbWF2ZWF0bQAAAAAAAAAAAAAAAAAAAAAA')
     audio.volume = 0.3
     audio.play().catch(() => {})
+  }
+
+  // 📱 تفعيل/إيقاف إشعارات المتصفح
+  const togglePushNotifications = async () => {
+    if (!('Notification' in window)) {
+      alert('المتصفح ديالك ما كيدعمش إشعارات المتصفح')
+      return
+    }
+
+    if (pushEnabled) {
+      // إيقاف
+      setPushEnabled(false)
+      localStorage.setItem('pushEnabled', 'false')
+    } else {
+      // تفعيل - طلب الإذن
+      if (Notification.permission === 'granted') {
+        setPushEnabled(true)
+        localStorage.setItem('pushEnabled', 'true')
+        showTestNotification()
+      } else if (Notification.permission !== 'denied') {
+        const permission = await Notification.requestPermission()
+        setPushPermission(permission)
+        if (permission === 'granted') {
+          setPushEnabled(true)
+          localStorage.setItem('pushEnabled', 'true')
+          showTestNotification()
+        }
+      } else {
+        alert('خاصك تسمح بالإشعارات من إعدادات المتصفح')
+      }
+    }
+  }
+
+  // 📱 إظهار إشعار المتصفح
+  const showBrowserNotification = async (notification: any) => {
+    if (document.visibilityState === 'visible') return // ما تبانش إلا المستخدم كيشوف الموقع
+    
+    const actorName = notification.actor?.username || 'مستخدم'
+    let title = 'إشعار جديد'
+    let body = ''
+    let icon = notification.actor?.avatar_url || '/favicon.ico'
+
+    if (notification.type === 'like') {
+      title = `${actorName} تفاعل مع منشورك 👍`
+      body = 'كليك باش تشوف المنشور'
+    } else if (notification.type === 'comment') {
+      title = `${actorName} علق على منشورك 💬`
+      body = 'كليك باش تشوف التعليق'
+    } else if (notification.type === 'comment_like') {
+      title = `${actorName} عجبو تعليقك ❤️`
+      body = 'كليك باش تشوف التعليق'
+    } else if (notification.type === 'follow') {
+      title = `${actorName} بدا كيتبعك 👥`
+      body = 'كليك باش تشوف البروفايل'
+    }
+
+    try {
+      const n = new Notification(title, {
+        body,
+        icon,
+        badge: '/favicon.ico',
+        tag: notification.id,
+        requireInteraction: false
+      })
+
+      n.onclick = () => {
+        window.focus()
+        if (notification.post_id) {
+          const element = document.getElementById(`post-${notification.post_id}`)
+          if (element) element.scrollIntoView({ behavior: 'smooth' })
+        }
+        n.close()
+      }
+
+      setTimeout(() => n.close(), 8000)
+    } catch (err) {
+      console.error('Error showing notification:', err)
+    }
+  }
+
+  // 📱 إشعار تجريبي
+  const showTestNotification = () => {
+    if (Notification.permission === 'granted') {
+      new Notification('🎉 تم تفعيل الإشعارات!', {
+        body: 'غادي توصلك إشعارات من Molios Empire حتى وإلا الموقع مسكر',
+        icon: '/favicon.ico'
+      })
+    }
   }
 
   const fetchFollowing = async (userId: string) => {
@@ -165,13 +262,9 @@ export default function Feed() {
   const fetchStories = async () => {
     const { data } = await supabase
       .from('stories')
-      .select(`
-        *,
-        profiles(id, username, avatar_url)
-      `)
+      .select(`*, profiles(id, username, avatar_url)`)
       .gte('expires_at', new Date().toISOString())
       .order('created_at', { ascending: false })
-    
     if (data) setStories(data)
   }
 
@@ -186,13 +279,7 @@ export default function Feed() {
         *, 
         profiles(id, username, full_name, avatar_url), 
         reactions(user_id, type),
-        comments(
-          id, 
-          content, 
-          user_id,
-          profiles(username, avatar_url),
-          comment_likes(user_id)
-        )
+        comments(id, content, user_id, profiles(username, avatar_url), comment_likes(user_id))
       `)
       .order('created_at', { ascending: false })
       .range(from, to)
@@ -200,11 +287,8 @@ export default function Feed() {
     if (error) {
       setError('خطأ ف جلب المنشورات: ' + error.message)
     } else if (data) {
-      if (reset) {
-        setPosts(data)
-      } else {
-        setPosts(prev => [...prev, ...data])
-      }
+      if (reset) setPosts(data)
+      else setPosts(prev => [...prev, ...data])
       setHasMore(data.length === POSTS_PER_PAGE)
     }
     setLoading(false)
@@ -220,11 +304,7 @@ export default function Feed() {
   const fetchNotifications = async (userId: string) => {
     const { data } = await supabase
       .from('notifications')
-      .select(`
-        *,
-        actor:actor_id(username, avatar_url),
-        post:post_id(content)
-      `)
+      .select(`*, actor:actor_id(username, avatar_url), post:post_id(content)`)
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(20)
@@ -289,24 +369,15 @@ export default function Feed() {
   const handleStoryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !user) return
-
     setUploadingStory(true)
     try {
       const fileExt = file.name.split('.').pop()
       const fileName = `${user.id}-${Date.now()}.${fileExt}`
-      
       const { error: uploadError } = await supabase.storage.from('stories').upload(fileName, file)
       if (uploadError) throw uploadError
-
       const { data: { publicUrl } } = supabase.storage.from('stories').getPublicUrl(fileName)
-
-      const { error: insertError } = await supabase.from('stories').insert({ 
-        user_id: user.id, 
-        image_url: publicUrl 
-      })
-      
+      const { error: insertError } = await supabase.from('stories').insert({ user_id: user.id, image_url: publicUrl })
       if (insertError) throw insertError
-
       if (storyInputRef.current) storyInputRef.current.value = ''
       await fetchStories()
     } catch (err: any) {
@@ -318,24 +389,17 @@ export default function Feed() {
 
   const handleReaction = async (postId: string, postOwnerId: string, reactionType: string) => {
     if (!user) return
-    
-    const existing = post => post.reactions?.find((r: any) => r.user_id === user.id)
     const post = posts.find(p => p.id === postId)
-    const myReaction = post ? existing(post) : null
+    const myReaction = post?.reactions?.find((r: any) => r.user_id === user.id)
     
     if (myReaction && myReaction.type === reactionType) {
       await supabase.from('reactions').delete().eq('post_id', postId).eq('user_id', user.id)
     } else if (myReaction) {
       await supabase.from('reactions').update({ type: reactionType }).eq('post_id', postId).eq('user_id', user.id)
     } else {
-      await supabase.from('reactions').insert({ 
-        post_id: postId, 
-        user_id: user.id, 
-        type: reactionType 
-      })
+      await supabase.from('reactions').insert({ post_id: postId, user_id: user.id, type: reactionType })
       await sendNotification(postOwnerId, 'like', postId)
     }
-    
     setShowReactionPicker(null)
     await fetchPosts(true)
   }
@@ -356,9 +420,7 @@ export default function Feed() {
     if (!text?.trim()) return
     const { data: inserted } = await supabase.from('comments').insert({ post_id: postId, user_id: user.id, content: text }).select()
     setCommentTexts({ ...commentTexts, [postId]: '' })
-    if (inserted && inserted[0]) {
-      await sendNotification(postOwnerId, 'comment', postId, inserted[0].id)
-    }
+    if (inserted && inserted[0]) await sendNotification(postOwnerId, 'comment', postId, inserted[0].id)
     await fetchPosts(true)
   }
 
@@ -388,9 +450,7 @@ export default function Feed() {
       setEditingCommentId(null)
       setEditCommentText('')
       await fetchPosts(true)
-    } else {
-      alert('خطأ ف التعديل: ' + error.message)
-    }
+    } else alert('خطأ ف التعديل: ' + error.message)
   }
 
   const handleCancelEdit = () => {
@@ -410,9 +470,7 @@ export default function Feed() {
       setEditingPostId(null)
       setEditPostContent('')
       await fetchPosts(true)
-    } else {
-      alert('خطأ ف التعديل: ' + error.message)
-    }
+    } else alert('خطأ ف التعديل: ' + error.message)
   }
 
   const handleCancelPostEdit = () => {
@@ -422,14 +480,9 @@ export default function Feed() {
 
   const handleBookmark = async (postId: string) => {
     if (!user) return
-    
     if (bookmarks.has(postId)) {
       await supabase.from('bookmarks').delete().eq('post_id', postId).eq('user_id', user.id)
-      setBookmarks(prev => {
-        const next = new Set(prev)
-        next.delete(postId)
-        return next
-      })
+      setBookmarks(prev => { const next = new Set(prev); next.delete(postId); return next })
     } else {
       await supabase.from('bookmarks').insert({ post_id: postId, user_id: user.id })
       setBookmarks(prev => new Set(prev).add(postId))
@@ -442,13 +495,8 @@ export default function Feed() {
       text: post.content.substring(0, 100) + (post.content.length > 100 ? '...' : ''),
       url: window.location.href
     }
-    
     if (navigator.share) {
-      try {
-        await navigator.share(shareData)
-      } catch (err) {
-        console.log('Error sharing:', err)
-      }
+      try { await navigator.share(shareData) } catch (err) { console.log('Error sharing:', err) }
     } else {
       navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`)
       alert('تم نسخ رابط المنشور!')
@@ -480,30 +528,19 @@ export default function Feed() {
 
   const getReactionSummary = (reactions: any[]) => {
     if (!reactions || reactions.length === 0) return null
-    
     const counts: {[key: string]: number} = {}
-    reactions.forEach(r => {
-      counts[r.type] = (counts[r.type] || 0) + 1
-    })
-    
+    reactions.forEach(r => { counts[r.type] = (counts[r.type] || 0) + 1 })
     const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1])
     const topEmojis = sorted.slice(0, 3).map(([type]) => REACTIONS[type as keyof typeof REACTIONS].emoji)
-    const totalCount = reactions.length
-    
-    return { topEmojis, totalCount, sorted }
+    return { topEmojis, totalCount: reactions.length, sorted }
   }
 
   return (
     <div className={`min-h-screen ${bg} transition-colors duration-300`}>
-      {/* 🔔 Toast Notifications */}
+      {/* 🔔 Toast */}
       <div className="fixed top-20 right-4 z-50 space-y-2">
         {toasts.map(toast => (
-          <div 
-            key={toast.id}
-            className={`p-4 rounded-lg shadow-lg border animate-slide-in max-w-sm ${
-              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-            }`}
-          >
+          <div key={toast.id} className={`p-4 rounded-lg shadow-lg border animate-slide-in max-w-sm ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0">
                 {toast.type === 'like' && <span className="text-2xl">👍</span>}
@@ -514,10 +551,7 @@ export default function Feed() {
               <div className="flex-1">
                 <p className={`text-sm ${textPrimary}`} dangerouslySetInnerHTML={{ __html: toast.message }} />
               </div>
-              <button 
-                onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
-                className="text-gray-400 hover:text-gray-600"
-              >
+              <button onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))} className="text-gray-400 hover:text-gray-600">
                 <X size={16} />
               </button>
             </div>
@@ -558,12 +592,35 @@ export default function Feed() {
                 <div className={`absolute left-0 mt-2 w-80 rounded-xl shadow-xl border z-50 max-h-96 overflow-y-auto ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                   <div className={`p-3 border-b font-bold text-sm flex justify-between items-center ${darkMode ? 'border-gray-700 text-gray-200' : 'border-gray-100 text-gray-800'}`}>
                     <span>الإشعارات</span>
-                    <button 
-                      onClick={() => setSoundEnabled(!soundEnabled)}
-                      className={`text-xs px-2 py-1 rounded ${soundEnabled ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}
-                    >
-                      {soundEnabled ? '🔊' : '🔇'}
-                    </button>
+                    <div className="flex gap-1">
+                      <button 
+                        onClick={() => setSoundEnabled(!soundEnabled)}
+                        className={`text-xs px-2 py-1 rounded ${soundEnabled ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}
+                        title={soundEnabled ? 'إيقاف الصوت' : 'تفعيل الصوت'}
+                      >
+                        {soundEnabled ? '🔊' : '🔇'}
+                      </button>
+                      {/* 📱 زر تفعيل Push */}
+                      <button 
+                        onClick={togglePushNotifications}
+                        className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${
+                          pushEnabled 
+                            ? 'bg-green-100 text-green-600' 
+                            : pushPermission === 'denied'
+                            ? 'bg-red-100 text-red-600'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}
+                        title={
+                          pushEnabled 
+                            ? 'إيقاف إشعارات المتصفح' 
+                            : pushPermission === 'denied'
+                            ? 'الإشعارات موقوفة من المتصفح'
+                            : 'تفعيل إشعارات المتصفح'
+                        }
+                      >
+                        {pushEnabled ? <BellRing size={14} /> : <BellOff size={14} />}
+                      </button>
+                    </div>
                   </div>
                   {notifications.length === 0 ? (
                     <div className="p-4 text-center text-sm text-gray-500">ما كاين حتى إشعار جديد 🎉</div>
@@ -614,19 +671,9 @@ export default function Feed() {
           <div className="flex gap-4 overflow-x-auto pb-2">
             <div className="flex-shrink-0">
               <label className="cursor-pointer">
-                <input 
-                  ref={storyInputRef}
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleStoryUpload}
-                  className="hidden"
-                />
+                <input ref={storyInputRef} type="file" accept="image/*" onChange={handleStoryUpload} className="hidden" />
                 <div className="w-16 h-16 rounded-full border-2 border-dashed border-blue-500 flex items-center justify-center hover:bg-blue-50 dark:hover:bg-gray-700 transition">
-                  {uploadingStory ? (
-                    <Loader className="animate-spin text-blue-500" size={24} />
-                  ) : (
-                    <Plus className="text-blue-500" size={24} />
-                  )}
+                  {uploadingStory ? <Loader className="animate-spin text-blue-500" size={24} /> : <Plus className="text-blue-500" size={24} />}
                 </div>
                 <p className={`text-xs text-center mt-1 ${textSecondary}`}>قصتك</p>
               </label>
@@ -634,13 +681,7 @@ export default function Feed() {
 
             {stories.map((story, idx) => (
               <div key={story.id} className="flex-shrink-0">
-                <button 
-                  onClick={() => {
-                    setViewingStory(story)
-                    setCurrentStoryIndex(idx)
-                  }}
-                  className="block"
-                >
+                <button onClick={() => { setViewingStory(story); setCurrentStoryIndex(idx) }} className="block">
                   <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600">
                     <img 
                       src={story.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${story.profiles?.username}&background=random`}
@@ -648,9 +689,7 @@ export default function Feed() {
                       className="w-full h-full rounded-full object-cover border-2 border-white dark:border-gray-800"
                     />
                   </div>
-                  <p className={`text-xs text-center mt-1 truncate max-w-[64px] ${textPrimary}`}>
-                    {story.profiles?.username}
-                  </p>
+                  <p className={`text-xs text-center mt-1 truncate max-w-[64px] ${textPrimary}`}>{story.profiles?.username}</p>
                 </button>
               </div>
             ))}
@@ -691,7 +730,7 @@ export default function Feed() {
               const summary = getReactionSummary(post.reactions)
               
               return (
-                <div key={post.id} className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
+                <div key={post.id} id={`post-${post.id}`} className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       {post.profiles?.avatar_url ? (
@@ -706,11 +745,7 @@ export default function Feed() {
                     <div className="flex items-center gap-2">
                       {post.user_id === user.id && (
                         <>
-                          <button 
-                            onClick={() => handleEditPost(post.id, post.content)}
-                            className="text-gray-400 hover:text-blue-600 transition p-1" 
-                            title="تعديل المنشور"
-                          >
+                          <button onClick={() => handleEditPost(post.id, post.content)} className="text-gray-400 hover:text-blue-600 transition p-1" title="تعديل المنشور">
                             <Pencil size={16} />
                           </button>
                           <button onClick={() => handleDeletePost(post.id)} className="text-gray-400 hover:text-red-600 transition p-1" title="حذف المنشور">
@@ -728,24 +763,12 @@ export default function Feed() {
                   
                   {editingPostId === post.id ? (
                     <div className="space-y-2 mb-3">
-                      <textarea 
-                        value={editPostContent}
-                        onChange={(e) => setEditPostContent(e.target.value)}
-                        className={`w-full p-3 border rounded-lg ${inputBg}`}
-                        rows={3}
-                        autoFocus
-                      />
+                      <textarea value={editPostContent} onChange={(e) => setEditPostContent(e.target.value)} className={`w-full p-3 border rounded-lg ${inputBg}`} rows={3} autoFocus />
                       <div className="flex gap-2">
-                        <button 
-                          onClick={() => handleSavePostEdit(post.id)}
-                          className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700 transition"
-                        >
+                        <button onClick={() => handleSavePostEdit(post.id)} className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700 transition">
                           <Save size={14} /> حفظ
                         </button>
-                        <button 
-                          onClick={handleCancelPostEdit}
-                          className="flex items-center gap-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500 transition"
-                        >
+                        <button onClick={handleCancelPostEdit} className="flex items-center gap-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500 transition">
                           <X size={14} /> إلغاء
                         </button>
                       </div>
@@ -759,9 +782,7 @@ export default function Feed() {
                   {summary && summary.totalCount > 0 && (
                     <div className={`flex items-center gap-2 mb-2 text-sm ${textSecondary}`}>
                       <div className="flex -space-x-1">
-                        {summary.topEmojis.map((emoji, idx) => (
-                          <span key={idx} className="text-base">{emoji}</span>
-                        ))}
+                        {summary.topEmojis.map((emoji, idx) => <span key={idx} className="text-base">{emoji}</span>)}
                       </div>
                       <span>{summary.totalCount}</span>
                     </div>
@@ -774,9 +795,7 @@ export default function Feed() {
                         onMouseLeave={() => setShowReactionPicker(null)}
                         onClick={() => handleReaction(post.id, post.user_id, myReaction?.type || 'like')}
                         className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg transition ${
-                          myReaction 
-                            ? `${REACTIONS[myReaction.type as keyof typeof REACTIONS].color} font-medium` 
-                            : `${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700`
+                          myReaction ? `${REACTIONS[myReaction.type as keyof typeof REACTIONS].color} font-medium` : `${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700`
                         }`}
                       >
                         {myReaction ? (
@@ -785,10 +804,7 @@ export default function Feed() {
                             <span className="text-sm">{REACTIONS[myReaction.type as keyof typeof REACTIONS].label}</span>
                           </>
                         ) : (
-                          <>
-                            <ThumbsUp size={18} />
-                            <span className="text-sm">تفاعل</span>
-                          </>
+                          <><ThumbsUp size={18} /><span className="text-sm">تفاعل</span></>
                         )}
                       </button>
                       
@@ -839,24 +855,12 @@ export default function Feed() {
                             <div className="flex-1">
                               {editingCommentId === comment.id ? (
                                 <div className="space-y-2">
-                                  <input 
-                                    type="text"
-                                    value={editCommentText}
-                                    onChange={(e) => setEditCommentText(e.target.value)}
-                                    className={`w-full p-2 border rounded-lg text-sm ${inputBg}`}
-                                    autoFocus
-                                  />
+                                  <input type="text" value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className={`w-full p-2 border rounded-lg text-sm ${inputBg}`} autoFocus />
                                   <div className="flex gap-2">
-                                    <button 
-                                      onClick={() => handleSaveEdit(comment.id)}
-                                      className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 transition"
-                                    >
+                                    <button onClick={() => handleSaveEdit(comment.id)} className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 transition">
                                       <Save size={12} /> حفظ
                                     </button>
-                                    <button 
-                                      onClick={handleCancelEdit}
-                                      className="flex items-center gap-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-2 py-1 rounded text-xs hover:bg-gray-300 dark:hover:bg-gray-500 transition"
-                                    >
+                                    <button onClick={handleCancelEdit} className="flex items-center gap-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-2 py-1 rounded text-xs hover:bg-gray-300 dark:hover:bg-gray-500 transition">
                                       <X size={12} /> إلغاء
                                     </button>
                                   </div>
@@ -870,18 +874,10 @@ export default function Feed() {
                                     </div>
                                     {comment.user_id === user.id && (
                                       <div className="flex gap-1 flex-shrink-0">
-                                        <button 
-                                          onClick={() => handleEditComment(comment.id, comment.content)}
-                                          className="text-blue-500 hover:text-blue-700 transition p-1"
-                                          title="تعديل التعليق"
-                                        >
+                                        <button onClick={() => handleEditComment(comment.id, comment.content)} className="text-blue-500 hover:text-blue-700 transition p-1" title="تعديل التعليق">
                                           <Pencil size={14} />
                                         </button>
-                                        <button 
-                                          onClick={() => handleDeleteComment(comment.id)}
-                                          className="text-red-500 hover:text-red-700 transition p-1"
-                                          title="حذف التعليق"
-                                        >
+                                        <button onClick={() => handleDeleteComment(comment.id)} className="text-red-500 hover:text-red-700 transition p-1" title="حذف التعليق">
                                           <Trash2 size={14} />
                                         </button>
                                       </div>
@@ -917,9 +913,7 @@ export default function Feed() {
                   <span>جاري تحميل المزيد...</span>
                 </div>
               )}
-              {!hasMore && posts.length > 0 && (
-                <p className="text-gray-400 text-sm">وصلتي للنهاية 🎉</p>
-              )}
+              {!hasMore && posts.length > 0 && <p className="text-gray-400 text-sm">وصلتي للنهاية 🎉</p>}
             </div>
           </>
         )}
@@ -928,52 +922,23 @@ export default function Feed() {
       {/* 📸 عارض القصص */}
       {viewingStory && (
         <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
-          <button 
-            onClick={() => setViewingStory(null)}
-            className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
-          >
+          <button onClick={() => setViewingStory(null)} className="absolute top-4 right-4 text-white hover:text-gray-300 z-10">
             <X size={32} />
           </button>
-          
           <div className="relative max-w-2xl w-full h-full flex items-center justify-center">
-            <img 
-              src={viewingStory.image_url} 
-              alt="Story" 
-              className="max-h-full max-w-full object-contain"
-            />
-            
+            <img src={viewingStory.image_url} alt="Story" className="max-h-full max-w-full object-contain" />
             <div className="absolute top-4 left-4 flex items-center gap-2 text-white">
-              <img 
-                src={viewingStory.profiles?.avatar_url} 
-                alt="" 
-                className="w-10 h-10 rounded-full object-cover border-2 border-white"
-              />
+              <img src={viewingStory.profiles?.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-white" />
               <span className="font-bold">{viewingStory.profiles?.username}</span>
-              <span className="text-sm opacity-75">
-                {new Date(viewingStory.created_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}
-              </span>
+              <span className="text-sm opacity-75">{new Date(viewingStory.created_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
-
             {currentStoryIndex > 0 && (
-              <button 
-                onClick={() => {
-                  setCurrentStoryIndex(currentStoryIndex - 1)
-                  setViewingStory(stories[currentStoryIndex - 1])
-                }}
-                className="absolute left-4 text-white hover:text-gray-300"
-              >
+              <button onClick={() => { setCurrentStoryIndex(currentStoryIndex - 1); setViewingStory(stories[currentStoryIndex - 1]) }} className="absolute left-4 text-white hover:text-gray-300">
                 <ChevronLeft size={48} />
               </button>
             )}
-
             {currentStoryIndex < stories.length - 1 && (
-              <button 
-                onClick={() => {
-                  setCurrentStoryIndex(currentStoryIndex + 1)
-                  setViewingStory(stories[currentStoryIndex + 1])
-                }}
-                className="absolute right-4 text-white hover:text-gray-300"
-              >
+              <button onClick={() => { setCurrentStoryIndex(currentStoryIndex + 1); setViewingStory(stories[currentStoryIndex + 1]) }} className="absolute right-4 text-white hover:text-gray-300">
                 <ChevronRight size={48} />
               </button>
             )}
