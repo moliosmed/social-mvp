@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart } from 'lucide-react'
+import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -23,30 +23,25 @@ export default function Feed() {
   const [notifications, setNotifications] = useState<any[]>([])
   const [showNotifications, setShowNotifications] = useState(false)
   
-  // حالات تعديل التعليقات
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editCommentText, setEditCommentText] = useState('')
   
-  // حالات المحفوظات
   const [bookmarks, setBookmarks] = useState<Set<string>>(new Set())
   
-  // 🎭 حالات التفاعلات
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null)
-  const reactionTimer = useRef<any>(null)
-  const openReactionPicker = (id: string) => {
-    if (reactionTimer.current) clearTimeout(reactionTimer.current)
-    setShowReactionPicker(id)
-  }
-  const closeReactionPicker = () => {
-    if (reactionTimer.current) clearTimeout(reactionTimer.current)
-    reactionTimer.current = setTimeout(() => setShowReactionPicker(null), 200)
-  }
   
-  // ✏️ حالات تعديل المنشورات
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
   const [editPostContent, setEditPostContent] = useState('')
   
+  // 📸 حالات القصص
+  const [stories, setStories] = useState<any[]>([])
+  const [storyFile, setStoryFile] = useState<File | null>(null)
+  const [uploadingStory, setUploadingStory] = useState(false)
+  const [viewingStory, setViewingStory] = useState<any | null>(null)
+  const [currentStoryIndex, setCurrentStoryIndex] = useState(0)
+  
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const storyInputRef = useRef<HTMLInputElement>(null)
   const observerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
@@ -77,6 +72,7 @@ export default function Feed() {
       if (user) {
         await fetchFollowing(user.id)
         await fetchBookmarks(user.id)
+        await fetchStories()
         await fetchPosts(true)
         fetchNotifications(user.id)
       }
@@ -94,6 +90,7 @@ export default function Feed() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_likes' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks' }, () => fetchBookmarks(user.id))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, () => fetchStories())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
         if (payload.new.user_id === user.id) {
           setNotifications(prev => [payload.new, ...prev])
@@ -131,6 +128,20 @@ export default function Feed() {
   const fetchBookmarks = async (userId: string) => {
     const { data } = await supabase.from('bookmarks').select('post_id').eq('user_id', userId)
     if (data) setBookmarks(new Set(data.map(b => b.post_id)))
+  }
+
+  // 📸 جلب القصص
+  const fetchStories = async () => {
+    const { data } = await supabase
+      .from('stories')
+      .select(`
+        *,
+        profiles(id, username, avatar_url)
+      `)
+      .gte('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+    
+    if (data) setStories(data)
   }
 
   const fetchPosts = async (reset = false) => {
@@ -244,10 +255,42 @@ export default function Feed() {
     finally { setLoading(false) }
   }
 
+  // 📸 رفع قصة جديدة
+  const handleStoryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+
+    setUploadingStory(true)
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`
+      
+      const { error: uploadError } = await supabase.storage.from('stories').upload(fileName, file)
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage.from('stories').getPublicUrl(fileName)
+
+      const { error: insertError } = await supabase.from('stories').insert({ 
+        user_id: user.id, 
+        image_url: publicUrl 
+      })
+      
+      if (insertError) throw insertError
+
+      setStoryFile(null)
+      if (storyInputRef.current) storyInputRef.current.value = ''
+      await fetchStories()
+    } catch (err: any) {
+      alert('خطأ ف رفع القصة: ' + err.message)
+    } finally {
+      setUploadingStory(false)
+    }
+  }
+
   const handleReaction = async (postId: string, postOwnerId: string, reactionType: string) => {
     if (!user) return
     
-    const existing = (post: any) => post.reactions?.find((r: any) => r.user_id === user.id)
+    const existing = post => post.reactions?.find((r: any) => r.user_id === user.id)
     const post = posts.find(p => p.id === postId)
     const myReaction = post ? existing(post) : null
     
@@ -326,7 +369,6 @@ export default function Feed() {
     setEditCommentText('')
   }
 
-  // ✏️ ميزة تعديل المنشورات
   const handleEditPost = (postId: string, currentContent: string) => {
     setEditingPostId(postId)
     setEditPostContent(currentContent)
@@ -502,6 +544,56 @@ export default function Feed() {
       <div className="max-w-2xl mx-auto p-4 space-y-6">
         {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">{error}</div>}
 
+        {/* 📸 قسم القصص */}
+        <div className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
+          <div className="flex gap-4 overflow-x-auto pb-2">
+            {/* زر إضافة قصة */}
+            <div className="flex-shrink-0">
+              <label className="cursor-pointer">
+                <input 
+                  ref={storyInputRef}
+                  type="file" 
+                  accept="image/*" 
+                  onChange={handleStoryUpload}
+                  className="hidden"
+                />
+                <div className="w-16 h-16 rounded-full border-2 border-dashed border-blue-500 flex items-center justify-center hover:bg-blue-50 dark:hover:bg-gray-700 transition">
+                  {uploadingStory ? (
+                    <Loader className="animate-spin text-blue-500" size={24} />
+                  ) : (
+                    <Plus className="text-blue-500" size={24} />
+                  )}
+                </div>
+                <p className={`text-xs text-center mt-1 ${textSecondary}`}>قصتك</p>
+              </label>
+            </div>
+
+            {/* القصص */}
+            {stories.map((story, idx) => (
+              <div key={story.id} className="flex-shrink-0">
+                <button 
+                  onClick={() => {
+                    setViewingStory(story)
+                    setCurrentStoryIndex(idx)
+                  }}
+                  className="block"
+                >
+                  <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600">
+                    <img 
+                      src={story.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${story.profiles?.username}&background=random`}
+                      alt={story.profiles?.username}
+                      className="w-full h-full rounded-full object-cover border-2 border-white dark:border-gray-800"
+                    />
+                  </div>
+                  <p className={`text-xs text-center mt-1 truncate max-w-[64px] ${textPrimary}`}>
+                    {story.profiles?.username}
+                  </p>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
           <form onSubmit={handlePost} className="space-y-3">
             <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="شنو كاين ف بالك؟" className={`w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputBg}`} rows={3} />
@@ -549,7 +641,6 @@ export default function Feed() {
                       <span className={`font-bold ${textPrimary}`}>{post.profiles?.full_name || post.profiles?.username}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {/* ✏️ أزرار تعديل وحذف المنشور */}
                       {post.user_id === user.id && (
                         <>
                           <button 
@@ -572,7 +663,6 @@ export default function Feed() {
                     </div>
                   </div>
                   
-                  {/* ✏️ وضع التعديل */}
                   {editingPostId === post.id ? (
                     <div className="space-y-2 mb-3">
                       <textarea 
@@ -615,9 +705,10 @@ export default function Feed() {
                   )}
                   
                   <div className="flex items-center gap-2 mb-2 border-t border-b py-2 relative">
-                    <div className="relative flex-1" onMouseLeave={closeReactionPicker}>
+                    <div className="relative flex-1">
                       <button 
-                        onMouseEnter={() => openReactionPicker(post.id)}
+                        onMouseEnter={() => setShowReactionPicker(post.id)}
+                        onMouseLeave={() => setShowReactionPicker(null)}
                         onClick={() => handleReaction(post.id, post.user_id, myReaction?.type || 'like')}
                         className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg transition ${
                           myReaction 
@@ -639,16 +730,12 @@ export default function Feed() {
                       </button>
                       
                       {showReactionPicker === post.id && (
-                        <div 
-                          className={`absolute bottom-full left-0 mb-2 flex gap-1 p-2 rounded-full shadow-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
-                          onMouseEnter={() => openReactionPicker(post.id)}
-                          onMouseLeave={closeReactionPicker}
-                        >
+                        <div className={`absolute bottom-full left-0 mb-2 flex gap-1 p-2 rounded-full shadow-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                           {Object.entries(REACTIONS).map(([type, data]) => (
                             <button
                               key={type}
                               onClick={() => handleReaction(post.id, post.user_id, type)}
-                              onMouseEnter={() => openReactionPicker(post.id)}
+                              onMouseEnter={() => setShowReactionPicker(post.id)}
                               className="text-2xl hover:scale-125 transition-transform p-1"
                               title={data.label}
                             >
@@ -774,6 +861,62 @@ export default function Feed() {
           </>
         )}
       </div>
+
+      {/* 📸 عارض القصص */}
+      {viewingStory && (
+        <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
+          <button 
+            onClick={() => setViewingStory(null)}
+            className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
+          >
+            <X size={32} />
+          </button>
+          
+          <div className="relative max-w-2xl w-full h-full flex items-center justify-center">
+            <img 
+              src={viewingStory.image_url} 
+              alt="Story" 
+              className="max-h-full max-w-full object-contain"
+            />
+            
+            <div className="absolute top-4 left-4 flex items-center gap-2 text-white">
+              <img 
+                src={viewingStory.profiles?.avatar_url} 
+                alt="" 
+                className="w-10 h-10 rounded-full object-cover border-2 border-white"
+              />
+              <span className="font-bold">{viewingStory.profiles?.username}</span>
+              <span className="text-sm opacity-75">
+                {new Date(viewingStory.created_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
+
+            {currentStoryIndex > 0 && (
+              <button 
+                onClick={() => {
+                  setCurrentStoryIndex(currentStoryIndex - 1)
+                  setViewingStory(stories[currentStoryIndex - 1])
+                }}
+                className="absolute left-4 text-white hover:text-gray-300"
+              >
+                <ChevronLeft size={48} />
+              </button>
+            )}
+
+            {currentStoryIndex < stories.length - 1 && (
+              <button 
+                onClick={() => {
+                  setCurrentStoryIndex(currentStoryIndex + 1)
+                  setViewingStory(stories[currentStoryIndex + 1])
+                }}
+                className="absolute right-4 text-white hover:text-gray-300"
+              >
+                <ChevronRight size={48} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
