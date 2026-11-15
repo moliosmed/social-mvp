@@ -81,6 +81,6 @@ CREATE POLICY "Users can view hashtags" ON hashtags FOR SELECT TO authenticated 
 -- ============ post_hashtags ============
 ALTER TABLE post_hashtags ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can add post_hashtags" ON post_hashtags;
-CREATE POLICY "Users can add post_hashtags" ON post_hashtags FOR INSERT TO authenticated USING (true);
+CREATE POLICY "Users can add post_hashtags" ON post_hashtags FOR INSERT TO authenticated WITH CHECK (true);
 
 -- =====================================================================
