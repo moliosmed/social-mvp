@@ -58,8 +58,8 @@ export default function Messages() {
       .from('conversations')
       .select(`
         *,
-        participant_1_profile:participant_1(username, avatar_url, full_name),
-        participant_2_profile:participant_2(username, avatar_url, full_name)
+        participant_1_profile:participant_1(id, username, avatar_url, full_name),
+        participant_2_profile:participant_2(id, username, avatar_url, full_name)
       `)
       .or(`participant_1.eq.${userId},participant_2.eq.${userId}`)
       .order('last_message_at', { ascending: false })
@@ -97,20 +97,20 @@ export default function Messages() {
     setError('')
     
     try {
-      // 1. نشوفو واش كاينة محادثة موجودة
+      // 1. جلب كل محادثات المستخدم الحالي
       const { data: allConvs, error: fetchError } = await supabase
         .from('conversations')
         .select(`
           *,
-          participant_1_profile:participant_1(username, avatar_url, full_name),
-          participant_2_profile:participant_2(username, avatar_url, full_name)
+          participant_1_profile:participant_1(id, username, avatar_url, full_name),
+          participant_2_profile:participant_2(id, username, avatar_url, full_name)
         `)
         .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
       
       if (fetchError) throw fetchError
       
-      // 2. نلقاو المحادثة مع المستخدم المختار
-      const existing = allConvs?.find(c => 
+      // 2. البحث يدوياً واش كاينة محادثة مع هاد المستخدم
+      const existing = allConvs?.find((c: any) => 
         (c.participant_1 === user.id && c.participant_2 === otherUserId) ||
         (c.participant_1 === otherUserId && c.participant_2 === user.id)
       )
@@ -120,7 +120,7 @@ export default function Messages() {
       if (existing) {
         conversation = existing
       } else {
-        // 3. نخلقو محادثة جديدة
+        // 3. إلا ما كايناش، نخلقو وحدة جديدة
         const { data: newConv, error: insertError } = await supabase
           .from('conversations')
           .insert({ 
@@ -129,8 +129,8 @@ export default function Messages() {
           })
           .select(`
             *,
-            participant_1_profile:participant_1(username, avatar_url, full_name),
-            participant_2_profile:participant_2(username, avatar_url, full_name)
+            participant_1_profile:participant_1(id, username, avatar_url, full_name),
+            participant_2_profile:participant_2(id, username, avatar_url, full_name)
           `)
           .single()
         
@@ -178,7 +178,7 @@ export default function Messages() {
     return conv.participant_1 === user.id ? conv.participant_2_profile : conv.participant_1_profile
   }
 
-  const filteredUsers = allUsers.filter(u => 
+  const filteredUsers = allUsers.filter((u: any) => 
     u.username?.toLowerCase().includes(searchUser.toLowerCase()) ||
     u.full_name?.toLowerCase().includes(searchUser.toLowerCase())
   )
@@ -212,6 +212,7 @@ export default function Messages() {
       )}
 
       <div className="max-w-4xl mx-auto p-4 flex gap-4 h-[calc(100vh-100px)]">
+        {/* قائمة المحادثات */}
         <div className="w-1/3 bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 overflow-y-auto">
           <div className="p-3 border-b border-gray-100 dark:border-gray-700 font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <MessageCircle size={18} /> المحادثات
@@ -228,7 +229,7 @@ export default function Messages() {
               </button>
             </div>
           ) : (
-            conversations.map(conv => {
+            conversations.map((conv: any) => {
               const other = getOtherParticipant(conv)
               return (
                 <div
@@ -264,6 +265,7 @@ export default function Messages() {
           )}
         </div>
 
+        {/* منطقة الرسائل */}
         <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-100 dark:border-gray-700 flex flex-col">
           {selectedConversation ? (
             <>
@@ -294,7 +296,7 @@ export default function Messages() {
                     ابدأ المحادثة بإرسال رسالة 👋
                   </div>
                 ) : (
-                  messages.map(msg => (
+                  messages.map((msg: any) => (
                     <div
                       key={msg.id}
                       className={`flex ${msg.sender_id === user.id ? 'justify-end' : 'justify-start'}`}
@@ -351,6 +353,7 @@ export default function Messages() {
         </div>
       </div>
 
+      {/* Modal لاختيار مستخدم */}
       {showNewChatModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md">
@@ -374,7 +377,7 @@ export default function Messages() {
                 {filteredUsers.length === 0 ? (
                   <p className="text-center text-gray-500 py-4">ما لقينا حتى مستخدم</p>
                 ) : (
-                  filteredUsers.map(u => (
+                  filteredUsers.map((u: any) => (
                     <div
                       key={u.id}
                       onClick={() => startConversation(u.id)}
