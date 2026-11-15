@@ -32,6 +32,15 @@ export default function Feed() {
   
   // 🎭 حالات التفاعلات
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null)
+  const reactionTimer = useRef<any>(null)
+  const openReactionPicker = (id: string) => {
+    if (reactionTimer.current) clearTimeout(reactionTimer.current)
+    setShowReactionPicker(id)
+  }
+  const closeReactionPicker = () => {
+    if (reactionTimer.current) clearTimeout(reactionTimer.current)
+    reactionTimer.current = setTimeout(() => setShowReactionPicker(null), 200)
+  }
   
   // ✏️ حالات تعديل المنشورات
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
@@ -606,10 +615,9 @@ export default function Feed() {
                   )}
                   
                   <div className="flex items-center gap-2 mb-2 border-t border-b py-2 relative">
-                    <div className="relative flex-1">
+                    <div className="relative flex-1" onMouseLeave={closeReactionPicker}>
                       <button 
-                        onMouseEnter={() => setShowReactionPicker(post.id)}
-                        onMouseLeave={() => setShowReactionPicker(null)}
+                        onMouseEnter={() => openReactionPicker(post.id)}
                         onClick={() => handleReaction(post.id, post.user_id, myReaction?.type || 'like')}
                         className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg transition ${
                           myReaction 
@@ -631,12 +639,16 @@ export default function Feed() {
                       </button>
                       
                       {showReactionPicker === post.id && (
-                        <div className={`absolute bottom-full left-0 mb-2 flex gap-1 p-2 rounded-full shadow-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                        <div 
+                          className={`absolute bottom-full left-0 mb-2 flex gap-1 p-2 rounded-full shadow-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
+                          onMouseEnter={() => openReactionPicker(post.id)}
+                          onMouseLeave={closeReactionPicker}
+                        >
                           {Object.entries(REACTIONS).map(([type, data]) => (
                             <button
                               key={type}
                               onClick={() => handleReaction(post.id, post.user_id, type)}
-                              onMouseEnter={() => setShowReactionPicker(post.id)}
+                              onMouseEnter={() => openReactionPicker(post.id)}
                               className="text-2xl hover:scale-125 transition-transform p-1"
                               title={data.label}
                             >
