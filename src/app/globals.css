@@ -4,12 +4,11 @@
 
 @layer base {
   * {
-    border-color: var(--border);
+    @apply border-border;
   }
   
   body {
-    background-color: var(--background);
-    color: var(--foreground);
+    @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
   
@@ -119,9 +118,7 @@
 
 /* Focus Styles */
 *:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--ring, #3b82f6);
-  outline-offset: 2px;
+  @apply outline-none ring-2 ring-blue-500 ring-offset-2;
 }
 
 /* Selection */
