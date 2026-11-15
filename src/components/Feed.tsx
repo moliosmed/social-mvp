@@ -519,17 +519,17 @@ export default function Feed() {
                                     <div className="flex gap-1 flex-shrink-0">
                                       <button 
                                         onClick={() => handleEditComment(comment.id, comment.content)}
-                                        className="text-gray-400 hover:text-blue-600 transition p-1"
+                                        className="text-blue-500 hover:text-blue-700 transition p-1"
                                         title="تعديل التعليق"
                                       >
-                                        <Pencil size={12} />
+                                        <Pencil size={14} />
                                       </button>
                                       <button 
                                         onClick={() => handleDeleteComment(comment.id)}
-                                        className="text-gray-400 hover:text-red-600 transition p-1"
+                                        className="text-red-500 hover:text-red-700 transition p-1"
                                         title="حذف التعليق"
                                       >
-                                        <Trash2 size={12} />
+                                        <Trash2 size={14} />
                                       </button>
                                     </div>
                                   )}
