@@ -33,12 +33,14 @@ export default function Feed() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
   const [editPostContent, setEditPostContent] = useState('')
   
-  // 📸 حالات القصص
   const [stories, setStories] = useState<any[]>([])
-  const [storyFile, setStoryFile] = useState<File | null>(null)
   const [uploadingStory, setUploadingStory] = useState(false)
   const [viewingStory, setViewingStory] = useState<any | null>(null)
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0)
+  
+  // 🔔 Toast Notifications
+  const [toasts, setToasts] = useState<any[]>([])
+  const [soundEnabled, setSoundEnabled] = useState(true)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const storyInputRef = useRef<HTMLInputElement>(null)
@@ -94,6 +96,12 @@ export default function Feed() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
         if (payload.new.user_id === user.id) {
           setNotifications(prev => [payload.new, ...prev])
+          // 🔔 إظهار Toast
+          showToast(payload.new)
+          // 🔔 تشغيل الصوت
+          if (soundEnabled) {
+            playNotificationSound()
+          }
         }
       })
       .subscribe()
@@ -101,7 +109,7 @@ export default function Feed() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [user?.id])
+  }, [user?.id, soundEnabled])
 
   useEffect(() => {
     if (!observerRef.current) return
@@ -120,6 +128,29 @@ export default function Feed() {
     return () => observer.disconnect()
   }, [hasMore, loadingMore, posts.length])
 
+  // 🔔 دالة إظهار Toast
+  const showToast = (notification: any) => {
+    const toast = {
+      id: Date.now(),
+      message: getNotificationText(notification),
+      type: notification.type
+    }
+    
+    setToasts(prev => [...prev, toast])
+    
+    // إخفاء بعد 5 ثواني
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== toast.id))
+    }, 5000)
+  }
+
+  // 🔔 تشغيل صوت التنبيه
+  const playNotificationSound = () => {
+    const audio = new Audio('data:audio/wav;base64,UklGNoaFbWF2ZWF0bQAAAAAAAAAAAAAAAAAAAAAA')
+    audio.volume = 0.3
+    audio.play().catch(() => {})
+  }
+
   const fetchFollowing = async (userId: string) => {
     const { data } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
     if (data) setFollowing(new Set(data.map(f => f.following_id)))
@@ -130,7 +161,6 @@ export default function Feed() {
     if (data) setBookmarks(new Set(data.map(b => b.post_id)))
   }
 
-  // 📸 جلب القصص
   const fetchStories = async () => {
     const { data } = await supabase
       .from('stories')
@@ -255,7 +285,6 @@ export default function Feed() {
     finally { setLoading(false) }
   }
 
-  // 📸 رفع قصة جديدة
   const handleStoryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !user) return
@@ -277,7 +306,6 @@ export default function Feed() {
       
       if (insertError) throw insertError
 
-      setStoryFile(null)
       if (storyInputRef.current) storyInputRef.current.value = ''
       await fetchStories()
     } catch (err: any) {
@@ -290,7 +318,7 @@ export default function Feed() {
   const handleReaction = async (postId: string, postOwnerId: string, reactionType: string) => {
     if (!user) return
     
-    const existing = (post: any) => post.reactions?.find((r: any) => r.user_id === user.id)
+    const existing = post => post.reactions?.find((r: any) => r.user_id === user.id)
     const post = posts.find(p => p.id === postId)
     const myReaction = post ? existing(post) : null
     
@@ -466,6 +494,36 @@ export default function Feed() {
 
   return (
     <div className={`min-h-screen ${bg} transition-colors duration-300`}>
+      {/* 🔔 Toast Notifications */}
+      <div className="fixed top-20 right-4 z-50 space-y-2">
+        {toasts.map(toast => (
+          <div 
+            key={toast.id}
+            className={`p-4 rounded-lg shadow-lg border animate-slide-in max-w-sm ${
+              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0">
+                {toast.type === 'like' && <span className="text-2xl">👍</span>}
+                {toast.type === 'comment' && <span className="text-2xl">💬</span>}
+                {toast.type === 'comment_like' && <span className="text-2xl">❤️</span>}
+                {toast.type === 'follow' && <span className="text-2xl">👥</span>}
+              </div>
+              <div className="flex-1">
+                <p className={`text-sm ${textPrimary}`} dangerouslySetInnerHTML={{ __html: toast.message }} />
+              </div>
+              <button 
+                onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
       <header className={`sticky top-0 z-20 border-b px-4 py-3 shadow-sm ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} transition-colors duration-300`}>
         <div className="max-w-2xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
           <h1 className="text-xl font-bold text-blue-600">Molios Empire</h1>
@@ -497,8 +555,14 @@ export default function Feed() {
 
               {showNotifications && (
                 <div className={`absolute left-0 mt-2 w-80 rounded-xl shadow-xl border z-50 max-h-96 overflow-y-auto ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                  <div className={`p-3 border-b font-bold text-sm ${darkMode ? 'border-gray-700 text-gray-200' : 'border-gray-100 text-gray-800'}`}>
-                    الإشعارات
+                  <div className={`p-3 border-b font-bold text-sm flex justify-between items-center ${darkMode ? 'border-gray-700 text-gray-200' : 'border-gray-100 text-gray-800'}`}>
+                    <span>الإشعارات</span>
+                    <button 
+                      onClick={() => setSoundEnabled(!soundEnabled)}
+                      className={`text-xs px-2 py-1 rounded ${soundEnabled ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}
+                    >
+                      {soundEnabled ? '🔊' : '🔇'}
+                    </button>
                   </div>
                   {notifications.length === 0 ? (
                     <div className="p-4 text-center text-sm text-gray-500">ما كاين حتى إشعار جديد 🎉</div>
@@ -547,7 +611,6 @@ export default function Feed() {
         {/* 📸 قسم القصص */}
         <div className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
           <div className="flex gap-4 overflow-x-auto pb-2">
-            {/* زر إضافة قصة */}
             <div className="flex-shrink-0">
               <label className="cursor-pointer">
                 <input 
@@ -568,7 +631,6 @@ export default function Feed() {
               </label>
             </div>
 
-            {/* القصص */}
             {stories.map((story, idx) => (
               <div key={story.id} className="flex-shrink-0">
                 <button 
