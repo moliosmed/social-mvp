@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { ArrowLeft, Users, UserCheck, FileText, LogOut, Camera, Pencil, Save, X, Trash2, AlertTriangle, Bookmark } from 'lucide-react'
+import { ArrowLeft, Users, UserCheck, FileText, LogOut, Camera, Pencil, Save, X, Trash2, AlertTriangle, Bookmark, Check } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Profile() {
