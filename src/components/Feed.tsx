@@ -1,9 +1,8 @@
-// @ts-nocheck
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing, Ban, Hash, Reply, RefreshCw } from 'lucide-react'
+import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing, Ban, Hash, Reply, RefreshCw, Users } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -54,7 +53,6 @@ export default function Feed() {
   const [replyTexts, setReplyTexts] = useState<{[key: string]: string}>({})
   const [showReplies, setShowReplies] = useState<{[key: string]: boolean}>({})
   
-  // 👥 اقتراحات المتابعة
   const [suggestedUsers, setSuggestedUsers] = useState<any[]>([])
   
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -77,7 +75,6 @@ export default function Feed() {
     const saved = localStorage.getItem('darkMode')
     if (saved === 'true') setDarkMode(true)
     
-    // 💾 استرجاع المسودة المحفوظة
     const savedDraft = localStorage.getItem('post_draft')
     if (savedDraft) setContent(savedDraft)
   }, [])
@@ -105,7 +102,7 @@ export default function Feed() {
         await fetchBookmarks(user.id)
         await fetchBlockedUsers(user.id)
         await fetchTrendingHashtags()
-        await fetchSuggestedUsers(user.id) // 👥 جلب الاقتراحات
+        await fetchSuggestedUsers(user.id)
         await fetchStories()
         await fetchPosts(true)
         fetchNotifications(user.id)
@@ -247,7 +244,6 @@ export default function Feed() {
     if (data) setTrendingHashtags(data)
   }
 
-  // 👥 جلب اقتراحات المتابعة
   const fetchSuggestedUsers = async (userId: string) => {
     const { data: following } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
     const followingIds = following?.map(f => f.following_id) || []
@@ -426,7 +422,7 @@ export default function Feed() {
       }
 
       setContent('')
-      localStorage.removeItem('post_draft') // 💾 مسح المسودة بعد النشر
+      localStorage.removeItem('post_draft')
       setImageFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
       await fetchPosts(true)
@@ -655,6 +651,10 @@ export default function Feed() {
             </div>
             <button onClick={() => setDarkMode(!darkMode)} className={`p-2 rounded-lg transition ${darkMode ? 'bg-gray-700 text-yellow-400 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{darkMode ? <Sun size={18} /> : <Moon size={18} />}</button>
             <Link href="/messages" className={`flex items-center gap-2 text-sm transition ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-600 hover:text-blue-600'}`}><MessageCircle size={18} /> <span className="hidden sm:inline">الرسائل</span></Link>
+            {/* 🏘️ رابط المجموعات الجديد */}
+            <Link href="/groups" className={`flex items-center gap-2 text-sm transition ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-600 hover:text-blue-600'}`}>
+              <Users size={18} /> <span className="hidden sm:inline">المجموعات</span>
+            </Link>
             <Link href="/profile" className={`flex items-center gap-2 text-sm transition ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-600 hover:text-blue-600'}`}><User size={18} /> <span className="hidden sm:inline">البروفايل</span></Link>
           </div>
         </div>
@@ -687,7 +687,6 @@ export default function Feed() {
           </div>
         </div>
 
-        {/* 👥 قسم اقتراحات المتابعة */}
         {suggestedUsers.length > 0 && (
           <div className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
             <div className="flex items-center justify-between mb-3">
