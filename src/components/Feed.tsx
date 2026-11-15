@@ -290,7 +290,7 @@ export default function Feed() {
   const handleReaction = async (postId: string, postOwnerId: string, reactionType: string) => {
     if (!user) return
     
-    const existing = post => post.reactions?.find((r: any) => r.user_id === user.id)
+    const existing = (post: any) => post.reactions?.find((r: any) => r.user_id === user.id)
     const post = posts.find(p => p.id === postId)
     const myReaction = post ? existing(post) : null
     
