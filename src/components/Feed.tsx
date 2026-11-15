@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing, Ban, Hash } from 'lucide-react'
+import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing, Ban, Hash, Reply } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -46,9 +46,13 @@ export default function Feed() {
   
   const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set())
   
-  // 🏷️ حالات الهاشتاجات
   const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null)
   const [trendingHashtags, setTrendingHashtags] = useState<any[]>([])
+  
+  // 💬 حالات الردود
+  const [replyingTo, setReplyingTo] = useState<string | null>(null)
+  const [replyTexts, setReplyTexts] = useState<{[key: string]: string}>({})
+  const [showReplies, setShowReplies] = useState<{[key: string]: boolean}>({})
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const storyInputRef = useRef<HTMLInputElement>(null)
@@ -111,6 +115,7 @@ export default function Feed() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reactions' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_likes' }, () => fetchPosts(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_replies' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks' }, () => fetchBookmarks(user.id))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, () => fetchStories())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'hashtags' }, () => fetchTrendingHashtags())
@@ -262,7 +267,6 @@ export default function Feed() {
     if (data) setBlockedUsers(new Set(data.map(b => b.blocked_id)))
   }
 
-  // 🏷️ جلب الهاشتاجات الشائعة
   const fetchTrendingHashtags = async () => {
     const { data } = await supabase
       .from('hashtags')
@@ -286,19 +290,30 @@ export default function Feed() {
     const from = reset ? 0 : posts.length
     const to = from + POSTS_PER_PAGE - 1
 
-    let query = supabase
+    const { data, error } = await supabase
       .from('posts')
       .select(`
         *, 
         profiles(id, username, full_name, avatar_url), 
         reactions(user_id, type),
-        comments(id, content, user_id, profiles(username, avatar_url), comment_likes(user_id)),
+        comments(
+          id, 
+          content, 
+          user_id,
+          profiles(username, avatar_url),
+          comment_likes(user_id),
+          comment_replies(
+            id,
+            content,
+            user_id,
+            created_at,
+            profiles(username, avatar_url)
+          )
+        ),
         post_hashtags(hashtag_id, hashtags(name))
       `)
       .order('created_at', { ascending: false })
       .range(from, to)
-
-    const { data, error } = await query
 
     if (error) {
       setError('خطأ ف جلب المنشورات: ' + error.message)
@@ -380,16 +395,13 @@ export default function Feed() {
     await fetchPosts(true)
   }
 
-  // 🏷️ استخراج الهاشتاجات من النص
   const extractHashtags = (text: string): string[] => {
     const matches = text.match(/#[\w\u0600-\u06FF]+/g)
     return matches ? matches.map(tag => tag.substring(1).toLowerCase()) : []
   }
 
-  // 🏷️ حفظ الهاشتاجات فـ قاعدة البيانات
   const saveHashtags = async (postId: string, hashtags: string[]) => {
     for (const tagName of hashtags) {
-      // حاول إضافة الهاشتاج
       const { data: existing } = await supabase
         .from('hashtags')
         .select('id')
@@ -399,14 +411,12 @@ export default function Feed() {
       let hashtagId: string
 
       if (existing) {
-        // هاشتاج موجود - زيد الكاونت
         hashtagId = existing.id
         await supabase
           .from('hashtags')
           .update({ count: supabase.rpc('increment', { row_id: hashtagId }) })
           .eq('id', hashtagId)
       } else {
-        // هاشتاج جديد
         const { data: newHashtag } = await supabase
           .from('hashtags')
           .insert({ name: tagName })
@@ -417,7 +427,6 @@ export default function Feed() {
         else continue
       }
 
-      // ربط الهاشتاج بالمنشور
       await supabase
         .from('post_hashtags')
         .insert({ post_id: postId, hashtag_id: hashtagId })
@@ -446,7 +455,6 @@ export default function Feed() {
       
       if (insertError) throw insertError
 
-      // 🏷️ حفظ الهاشتاجات
       const hashtags = extractHashtags(content)
       if (hashtags.length > 0 && postData) {
         await saveHashtags(postData.id, hashtags)
@@ -518,6 +526,31 @@ export default function Feed() {
     await fetchPosts(true)
   }
 
+  // 💬 الرد على تعليق
+  const handleReply = async (commentId: string, commentOwnerId: string, postId: string) => {
+    const text = replyTexts[commentId]
+    if (!text?.trim()) return
+    
+    const { data: inserted, error } = await supabase
+      .from('comment_replies')
+      .insert({ comment_id: commentId, user_id: user.id, content: text })
+      .select()
+    
+    if (error) {
+      alert('خطأ ف الرد: ' + error.message)
+      return
+    }
+    
+    setReplyTexts({ ...replyTexts, [commentId]: '' })
+    setReplyingTo(null)
+    
+    if (inserted && inserted[0]) {
+      await sendNotification(commentOwnerId, 'comment', postId, commentId)
+    }
+    
+    await fetchPosts(true)
+  }
+
   const handleDeletePost = async (postId: string) => {
     if (!confirm('واش متأكد بغيتي تحيد هاد المنشور؟')) return
     const { error } = await supabase.from('posts').delete().eq('id', postId)
@@ -528,6 +561,13 @@ export default function Feed() {
   const handleDeleteComment = async (commentId: string) => {
     if (!confirm('واش متأكد بغيتي تحيد هاد التعليق؟')) return
     const { error } = await supabase.from('comments').delete().eq('id', commentId)
+    if (!error) await fetchPosts(true)
+    else alert('خطأ ف الحذف: ' + error.message)
+  }
+
+  const handleDeleteReply = async (replyId: string) => {
+    if (!confirm('واش متأكد بغيتي تحيد هاد الرد؟')) return
+    const { error } = await supabase.from('comment_replies').delete().eq('id', replyId)
     if (!error) await fetchPosts(true)
     else alert('خطأ ف الحذف: ' + error.message)
   }
@@ -599,7 +639,6 @@ export default function Feed() {
 
   if (!user) return null
 
-  // 🏷️ فلترة حسب الهاشتاج + البحث + الحظر
   const filteredPosts = posts.filter(post => {
     const matchesSearch = post.content.toLowerCase().includes(searchQuery.toLowerCase()) || 
       post.profiles?.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -607,7 +646,6 @@ export default function Feed() {
     
     const isBlocked = blockedUsers.has(post.profiles?.id)
     
-    // 🏷️ فلترة الهاشتاج
     let matchesHashtag = true
     if (selectedHashtag) {
       const postHashtags = post.post_hashtags?.map((ph: any) => ph.hashtags?.name) || []
@@ -641,7 +679,6 @@ export default function Feed() {
     return { topEmojis, totalCount: reactions.length, sorted }
   }
 
-  // 🏷️ تلوين الهاشتاجات فـ النص
   const renderContentWithHashtags = (content: string) => {
     const parts = content.split(/(#[\w\u0600-\u06FF]+)/g)
     return parts.map((part, idx) => {
@@ -662,7 +699,6 @@ export default function Feed() {
 
   return (
     <div className={`min-h-screen ${bg} transition-colors duration-300`}>
-      {/* 🔔 Toast */}
       <div className="fixed top-20 right-4 z-50 space-y-2">
         {toasts.map(toast => (
           <div key={toast.id} className={`p-4 rounded-lg shadow-lg border animate-slide-in max-w-sm ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
@@ -778,7 +814,6 @@ export default function Feed() {
       <div className="max-w-2xl mx-auto p-4 space-y-6">
         {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">{error}</div>}
 
-        {/* 📸 قسم القصص */}
         <div className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
           <div className="flex gap-4 overflow-x-auto pb-2">
             <div className="flex-shrink-0">
@@ -808,7 +843,6 @@ export default function Feed() {
           </div>
         </div>
 
-        {/* 🏷️ قسم الهاشتاجات الشائعة */}
         {trendingHashtags.length > 0 && (
           <div className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
             <div className="flex items-center gap-2 mb-3">
@@ -1005,57 +1039,135 @@ export default function Feed() {
                   {showComments[post.id] && (
                     <div className={`mt-4 space-y-3 border-t pt-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                       {post.comments?.map((comment: any, idx: number) => (
-                        <div key={idx} className={`p-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                          <div className="flex items-start gap-2">
-                            {comment.profiles?.avatar_url ? (
-                              <img src={comment.profiles.avatar_url} alt="Avatar" className="w-6 h-6 rounded-full object-cover" />
-                            ) : (
-                              <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">
-                                {comment.profiles?.username?.[0]?.toUpperCase() || 'U'}
-                              </div>
-                            )}
-                            <div className="flex-1">
-                              {editingCommentId === comment.id ? (
-                                <div className="space-y-2">
-                                  <input type="text" value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className={`w-full p-2 border rounded-lg text-sm ${inputBg}`} autoFocus />
-                                  <div className="flex gap-2">
-                                    <button onClick={() => handleSaveEdit(comment.id)} className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 transition">
-                                      <Save size={12} /> حفظ
-                                    </button>
-                                    <button onClick={handleCancelEdit} className="flex items-center gap-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-2 py-1 rounded text-xs hover:bg-gray-300 dark:hover:bg-gray-500 transition">
-                                      <X size={12} /> إلغاء
-                                    </button>
-                                  </div>
-                                </div>
+                        <div key={idx} className="space-y-2">
+                          <div className={`p-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                            <div className="flex items-start gap-2">
+                              {comment.profiles?.avatar_url ? (
+                                <img src={comment.profiles.avatar_url} alt="Avatar" className="w-6 h-6 rounded-full object-cover" />
                               ) : (
-                                <>
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="flex-1">
-                                      <span className={`font-bold ${textPrimary}`}>{comment.profiles?.username}: </span>
-                                      <span className={textPrimary}>{comment.content}</span>
-                                    </div>
-                                    {comment.user_id === user.id && (
-                                      <div className="flex gap-1 flex-shrink-0">
-                                        <button onClick={() => handleEditComment(comment.id, comment.content)} className="text-blue-500 hover:text-blue-700 transition p-1" title="تعديل التعليق">
-                                          <Pencil size={14} />
-                                        </button>
-                                        <button onClick={() => handleDeleteComment(comment.id)} className="text-red-500 hover:text-red-700 transition p-1" title="حذف التعليق">
-                                          <Trash2 size={14} />
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                  <button 
-                                    onClick={() => handleCommentLike(comment.id, comment.user_id, post.id)}
-                                    className={`flex items-center gap-1 mt-1 text-xs transition ${comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}
-                                  >
-                                    <Heart size={12} className={comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} />
-                                    <span>{comment.comment_likes?.length || 0}</span>
-                                  </button>
-                                </>
+                                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">
+                                  {comment.profiles?.username?.[0]?.toUpperCase() || 'U'}
+                                </div>
                               )}
+                              <div className="flex-1">
+                                {editingCommentId === comment.id ? (
+                                  <div className="space-y-2">
+                                    <input type="text" value={editCommentText} onChange={(e) => setEditCommentText(e.target.value)} className={`w-full p-2 border rounded-lg text-sm ${inputBg}`} autoFocus />
+                                    <div className="flex gap-2">
+                                      <button onClick={() => handleSaveEdit(comment.id)} className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 transition">
+                                        <Save size={12} /> حفظ
+                                      </button>
+                                      <button onClick={handleCancelEdit} className="flex items-center gap-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-2 py-1 rounded text-xs hover:bg-gray-300 dark:hover:bg-gray-500 transition">
+                                        <X size={12} /> إلغاء
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex-1">
+                                        <span className={`font-bold ${textPrimary}`}>{comment.profiles?.username}: </span>
+                                        <span className={textPrimary}>{comment.content}</span>
+                                      </div>
+                                      {comment.user_id === user.id && (
+                                        <div className="flex gap-1 flex-shrink-0">
+                                          <button onClick={() => handleEditComment(comment.id, comment.content)} className="text-blue-500 hover:text-blue-700 transition p-1" title="تعديل التعليق">
+                                            <Pencil size={14} />
+                                          </button>
+                                          <button onClick={() => handleDeleteComment(comment.id)} className="text-red-500 hover:text-red-700 transition p-1" title="حذف التعليق">
+                                            <Trash2 size={14} />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-3 mt-1">
+                                      <button 
+                                        onClick={() => handleCommentLike(comment.id, comment.user_id, post.id)}
+                                        className={`flex items-center gap-1 text-xs transition ${comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}
+                                      >
+                                        <Heart size={12} className={comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} />
+                                        <span>{comment.comment_likes?.length || 0}</span>
+                                      </button>
+                                      <button 
+                                        onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
+                                        className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-500 transition"
+                                      >
+                                        <Reply size={12} /> رد
+                                      </button>
+                                      {comment.comment_replies?.length > 0 && (
+                                        <button 
+                                          onClick={() => setShowReplies({ ...showReplies, [comment.id]: !showReplies[comment.id] })}
+                                          className="text-xs text-blue-500 hover:text-blue-600 transition"
+                                        >
+                                          {showReplies[comment.id] ? 'إخفاء' : `عرض ${comment.comment_replies.length} رد`}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
+
+                          {/* 💬 الردود */}
+                          {showReplies[comment.id] && comment.comment_replies?.length > 0 && (
+                            <div className="ml-8 space-y-2">
+                              {comment.comment_replies.map((reply: any) => (
+                                <div key={reply.id} className={`p-2 rounded-lg text-sm ${darkMode ? 'bg-gray-600' : 'bg-gray-100'}`}>
+                                  <div className="flex items-start gap-2">
+                                    {reply.profiles?.avatar_url ? (
+                                      <img src={reply.profiles.avatar_url} alt="Avatar" className="w-5 h-5 rounded-full object-cover" />
+                                    ) : (
+                                      <div className="w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">
+                                        {reply.profiles?.username?.[0]?.toUpperCase() || 'U'}
+                                      </div>
+                                    )}
+                                    <div className="flex-1">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1">
+                                          <span className={`font-bold ${textPrimary} text-xs`}>{reply.profiles?.username}: </span>
+                                          <span className={`${textPrimary} text-xs`}>{reply.content}</span>
+                                        </div>
+                                        {reply.user_id === user.id && (
+                                          <button 
+                                            onClick={() => handleDeleteReply(reply.id)}
+                                            className="text-red-500 hover:text-red-700 transition p-1"
+                                            title="حذف الرد"
+                                          >
+                                            <Trash2 size={10} />
+                                          </button>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        {new Date(reply.created_at).toLocaleDateString('ar-MA')}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* 💬 حقل الرد */}
+                          {replyingTo === comment.id && (
+                            <div className="ml-8 flex gap-2">
+                              <input 
+                                type="text" 
+                                value={replyTexts[comment.id] || ''} 
+                                onChange={(e) => setReplyTexts({ ...replyTexts, [comment.id]: e.target.value })} 
+                                placeholder="اكتب رد..." 
+                                className={`flex-1 p-2 border rounded-lg text-sm ${inputBg}`}
+                                onKeyPress={(e) => { if (e.key === 'Enter') handleReply(comment.id, comment.user_id, post.id) }}
+                                autoFocus
+                              />
+                              <button 
+                                onClick={() => handleReply(comment.id, comment.user_id, post.id)} 
+                                className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
+                              >
+                                رد
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                       <div className="flex gap-2">
@@ -1081,7 +1193,6 @@ export default function Feed() {
         )}
       </div>
 
-      {/* 📸 عارض القصص */}
       {viewingStory && (
         <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
           <button onClick={() => setViewingStory(null)} className="absolute top-4 right-4 text-white hover:text-gray-300 z-10">
