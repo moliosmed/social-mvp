@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Heart, Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2 } from 'lucide-react'
+import { Heart, Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -22,6 +22,10 @@ export default function Feed() {
   
   const [notifications, setNotifications] = useState<any[]>([])
   const [showNotifications, setShowNotifications] = useState(false)
+  
+  // حالات تعديل التعليقات
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editCommentText, setEditCommentText] = useState('')
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const observerRef = useRef<HTMLDivElement>(null)
@@ -252,34 +256,44 @@ export default function Feed() {
     else alert('خطأ ف الحذف: ' + error.message)
   }
 
-  // 🌟 ميزة المشاركة
-  const handleShare = async (post: any) => {
-    const url = window.location.href
-    const content = post.content || ''
-    const text = content.substring(0, 100) + (content.length > 100 ? '...' : '')
+  // 🌟 ميزة تعديل التعليقات
+  const handleEditComment = (commentId: string, currentText: string) => {
+    setEditingCommentId(commentId)
+    setEditCommentText(currentText)
+  }
 
+  const handleSaveEdit = async (commentId: string) => {
+    if (!editCommentText.trim()) return
+    const { error } = await supabase.from('comments').update({ content: editCommentText }).eq('id', commentId)
+    if (!error) {
+      setEditingCommentId(null)
+      setEditCommentText('')
+      await fetchPosts(true)
+    } else {
+      alert('خطأ ف التعديل: ' + error.message)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingCommentId(null)
+    setEditCommentText('')
+  }
+
+  const handleShare = async (post: any) => {
+    const shareData = {
+      title: 'منشور من Molios Empire',
+      text: post.content.substring(0, 100) + (post.content.length > 100 ? '...' : ''),
+      url: window.location.href
+    }
+    
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'منشور من Molios Empire', text, url })
-        return
-      } catch (err: any) {
-        if (err?.name === 'AbortError') return
+        await navigator.share(shareData)
+      } catch (err) {
+        console.log('Error sharing:', err)
       }
-    }
-
-    const payload = `${text}\n${url}`
-    try {
-      await navigator.clipboard.writeText(payload)
-      alert('تم نسخ رابط المنشور!')
-    } catch {
-      const ta = document.createElement('textarea')
-      ta.value = payload
-      ta.style.position = 'fixed'
-      ta.style.opacity = '0'
-      document.body.appendChild(ta)
-      ta.select()
-      document.execCommand('copy')
-      document.body.removeChild(ta)
+    } else {
+      navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`)
       alert('تم نسخ رابط المنشور!')
     }
   }
@@ -445,7 +459,6 @@ export default function Feed() {
                 <p className={`${textPrimary} mb-3 whitespace-pre-wrap`}>{post.content}</p>
                 {post.image_url && <img src={post.image_url} alt="Post" className="w-full rounded-lg mb-3 max-h-96 object-cover border border-gray-200" />}
                 
-                {/* أزرار التفاعل */}
                 <div className="flex items-center gap-4 mb-2">
                   <button onClick={() => handleLike(post.id, post.user_id)} className={`flex items-center gap-1 transition ${post.likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}>
                     <Heart size={18} className={post.likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} /> <span>{post.likes?.length || 0}</span>
@@ -453,7 +466,6 @@ export default function Feed() {
                   <button onClick={() => setShowComments({ ...showComments, [post.id]: !showComments[post.id] })} className={`flex items-center gap-1 transition ${textSecondary} hover:text-blue-500`}>
                     <MessageCircle size={18} /> <span>{post.comments?.length || 0}</span>
                   </button>
-                  {/* 🌟 زر المشاركة الجديد */}
                   <button onClick={() => handleShare(post)} className={`flex items-center gap-1 transition ${textSecondary} hover:text-green-500`}>
                     <Share2 size={18} /> <span className="text-sm">مشاركة</span>
                   </button>
@@ -472,28 +484,65 @@ export default function Feed() {
                             </div>
                           )}
                           <div className="flex-1">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1">
-                                <span className={`font-bold ${textPrimary}`}>{comment.profiles?.username}: </span>
-                                <span className={textPrimary}>{comment.content}</span>
+                            {editingCommentId === comment.id ? (
+                              <div className="space-y-2">
+                                <input 
+                                  type="text"
+                                  value={editCommentText}
+                                  onChange={(e) => setEditCommentText(e.target.value)}
+                                  className={`w-full p-2 border rounded-lg text-sm ${inputBg}`}
+                                  autoFocus
+                                />
+                                <div className="flex gap-2">
+                                  <button 
+                                    onClick={() => handleSaveEdit(comment.id)}
+                                    className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 transition"
+                                  >
+                                    <Save size={12} /> حفظ
+                                  </button>
+                                  <button 
+                                    onClick={handleCancelEdit}
+                                    className="flex items-center gap-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-2 py-1 rounded text-xs hover:bg-gray-300 dark:hover:bg-gray-500 transition"
+                                  >
+                                    <X size={12} /> إلغاء
+                                  </button>
+                                </div>
                               </div>
-                              {comment.user_id === user.id && (
+                            ) : (
+                              <>
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1">
+                                    <span className={`font-bold ${textPrimary}`}>{comment.profiles?.username}: </span>
+                                    <span className={textPrimary}>{comment.content}</span>
+                                  </div>
+                                  {comment.user_id === user.id && (
+                                    <div className="flex gap-1 flex-shrink-0">
+                                      <button 
+                                        onClick={() => handleEditComment(comment.id, comment.content)}
+                                        className="text-gray-400 hover:text-blue-600 transition p-1"
+                                        title="تعديل التعليق"
+                                      >
+                                        <Pencil size={12} />
+                                      </button>
+                                      <button 
+                                        onClick={() => handleDeleteComment(comment.id)}
+                                        className="text-gray-400 hover:text-red-600 transition p-1"
+                                        title="حذف التعليق"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                                 <button 
-                                  onClick={() => handleDeleteComment(comment.id)}
-                                  className="text-gray-400 hover:text-red-600 transition p-1 flex-shrink-0"
-                                  title="حذف التعليق"
+                                  onClick={() => handleCommentLike(comment.id, comment.user_id, post.id)}
+                                  className={`flex items-center gap-1 mt-1 text-xs transition ${comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}
                                 >
-                                  <Trash2 size={12} />
+                                  <Heart size={12} className={comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} />
+                                  <span>{comment.comment_likes?.length || 0}</span>
                                 </button>
-                              )}
-                            </div>
-                            <button 
-                              onClick={() => handleCommentLike(comment.id, comment.user_id, post.id)}
-                              className={`flex items-center gap-1 mt-1 text-xs transition ${comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}
-                            >
-                              <Heart size={12} className={comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} />
-                              <span>{comment.comment_likes?.length || 0}</span>
-                            </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
