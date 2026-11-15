@@ -33,13 +33,16 @@ export default function Feed() {
   // 🎭 حالات التفاعلات
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null)
   
+  // ✏️ حالات تعديل المنشورات
+  const [editingPostId, setEditingPostId] = useState<string | null>(null)
+  const [editPostContent, setEditPostContent] = useState('')
+  
   const fileInputRef = useRef<HTMLInputElement>(null)
   const observerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
   const POSTS_PER_PAGE = 10
 
-  // 🎭 تعريف التفاعلات
   const REACTIONS = {
     like: { emoji: '👍', label: 'Like', color: 'text-blue-500' },
     love: { emoji: '❤️', label: 'Love', color: 'text-red-500' },
@@ -232,22 +235,18 @@ export default function Feed() {
     finally { setLoading(false) }
   }
 
-  // 🎭 ميزة التفاعلات المتعددة
   const handleReaction = async (postId: string, postOwnerId: string, reactionType: string) => {
     if (!user) return
     
-    const existing = (post: any) => post.reactions?.find((r: any) => r.user_id === user.id)
+    const existing = post => post.reactions?.find((r: any) => r.user_id === user.id)
     const post = posts.find(p => p.id === postId)
     const myReaction = post ? existing(post) : null
     
     if (myReaction && myReaction.type === reactionType) {
-      // نفس التفاعل → إلغاء
       await supabase.from('reactions').delete().eq('post_id', postId).eq('user_id', user.id)
     } else if (myReaction) {
-      // تفاعل مختلف → تحديث
       await supabase.from('reactions').update({ type: reactionType }).eq('post_id', postId).eq('user_id', user.id)
     } else {
-      // تفاعل جديد
       await supabase.from('reactions').insert({ 
         post_id: postId, 
         user_id: user.id, 
@@ -318,6 +317,29 @@ export default function Feed() {
     setEditCommentText('')
   }
 
+  // ✏️ ميزة تعديل المنشورات
+  const handleEditPost = (postId: string, currentContent: string) => {
+    setEditingPostId(postId)
+    setEditPostContent(currentContent)
+  }
+
+  const handleSavePostEdit = async (postId: string) => {
+    if (!editPostContent.trim()) return
+    const { error } = await supabase.from('posts').update({ content: editPostContent }).eq('id', postId)
+    if (!error) {
+      setEditingPostId(null)
+      setEditPostContent('')
+      await fetchPosts(true)
+    } else {
+      alert('خطأ ف التعديل: ' + error.message)
+    }
+  }
+
+  const handleCancelPostEdit = () => {
+    setEditingPostId(null)
+    setEditPostContent('')
+  }
+
   const handleBookmark = async (postId: string) => {
     if (!user) return
     
@@ -376,7 +398,6 @@ export default function Feed() {
     return 'إشعار جديد'
   }
 
-  // 🎭 دالة لحساب التفاعلات
   const getReactionSummary = (reactions: any[]) => {
     if (!reactions || reactions.length === 0) return null
     
@@ -519,10 +540,20 @@ export default function Feed() {
                       <span className={`font-bold ${textPrimary}`}>{post.profiles?.full_name || post.profiles?.username}</span>
                     </div>
                     <div className="flex items-center gap-2">
+                      {/* ✏️ أزرار تعديل وحذف المنشور */}
                       {post.user_id === user.id && (
-                        <button onClick={() => handleDeletePost(post.id)} className="text-gray-400 hover:text-red-600 transition p-1" title="حذف المنشور">
-                          <Trash2 size={18} />
-                        </button>
+                        <>
+                          <button 
+                            onClick={() => handleEditPost(post.id, post.content)}
+                            className="text-gray-400 hover:text-blue-600 transition p-1" 
+                            title="تعديل المنشور"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button onClick={() => handleDeletePost(post.id)} className="text-gray-400 hover:text-red-600 transition p-1" title="حذف المنشور">
+                            <Trash2 size={18} />
+                          </button>
+                        </>
                       )}
                       {post.user_id !== user.id && (
                         <button onClick={() => handleFollow(post.profiles.id)} className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium transition ${following.has(post.profiles.id) ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
@@ -531,10 +562,38 @@ export default function Feed() {
                       )}
                     </div>
                   </div>
-                  <p className={`${textPrimary} mb-3 whitespace-pre-wrap`}>{post.content}</p>
+                  
+                  {/* ✏️ وضع التعديل */}
+                  {editingPostId === post.id ? (
+                    <div className="space-y-2 mb-3">
+                      <textarea 
+                        value={editPostContent}
+                        onChange={(e) => setEditPostContent(e.target.value)}
+                        className={`w-full p-3 border rounded-lg ${inputBg}`}
+                        rows={3}
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleSavePostEdit(post.id)}
+                          className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700 transition"
+                        >
+                          <Save size={14} /> حفظ
+                        </button>
+                        <button 
+                          onClick={handleCancelPostEdit}
+                          className="flex items-center gap-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-300 dark:hover:bg-gray-500 transition"
+                        >
+                          <X size={14} /> إلغاء
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className={`${textPrimary} mb-3 whitespace-pre-wrap`}>{post.content}</p>
+                  )}
+                  
                   {post.image_url && <img src={post.image_url} alt="Post" className="w-full rounded-lg mb-3 max-h-96 object-cover border border-gray-200" />}
                   
-                  {/* 🎭 ملخص التفاعلات */}
                   {summary && summary.totalCount > 0 && (
                     <div className={`flex items-center gap-2 mb-2 text-sm ${textSecondary}`}>
                       <div className="flex -space-x-1">
@@ -547,10 +606,10 @@ export default function Feed() {
                   )}
                   
                   <div className="flex items-center gap-2 mb-2 border-t border-b py-2 relative">
-                    {/* 🎭 زر التفاعل الرئيسي */}
-                    <div className="relative flex-1" onMouseLeave={() => setShowReactionPicker(null)}>
+                    <div className="relative flex-1">
                       <button 
                         onMouseEnter={() => setShowReactionPicker(post.id)}
+                        onMouseLeave={() => setShowReactionPicker(null)}
                         onClick={() => handleReaction(post.id, post.user_id, myReaction?.type || 'like')}
                         className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg transition ${
                           myReaction 
@@ -571,7 +630,6 @@ export default function Feed() {
                         )}
                       </button>
                       
-                      {/* 🎭 قائمة التفاعلات المنبثقة */}
                       {showReactionPicker === post.id && (
                         <div className={`absolute bottom-full left-0 mb-2 flex gap-1 p-2 rounded-full shadow-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                           {Object.entries(REACTIONS).map(([type, data]) => (
