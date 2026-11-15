@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing, Ban } from 'lucide-react'
+import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing, Ban, Hash } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -44,8 +44,11 @@ export default function Feed() {
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushPermission, setPushPermission] = useState<NotificationPermission>('default')
   
-  // 🚫 حالات الحظر
   const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set())
+  
+  // 🏷️ حالات الهاشتاجات
+  const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null)
+  const [trendingHashtags, setTrendingHashtags] = useState<any[]>([])
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const storyInputRef = useRef<HTMLInputElement>(null)
@@ -90,6 +93,7 @@ export default function Feed() {
         await fetchFollowing(user.id)
         await fetchBookmarks(user.id)
         await fetchBlockedUsers(user.id)
+        await fetchTrendingHashtags()
         await fetchStories()
         await fetchPosts(true)
         fetchNotifications(user.id)
@@ -109,6 +113,7 @@ export default function Feed() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_likes' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks' }, () => fetchBookmarks(user.id))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, () => fetchStories())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hashtags' }, () => fetchTrendingHashtags())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, async (payload) => {
         if (payload.new.user_id === user.id) {
           setNotifications(prev => [payload.new, ...prev])
@@ -252,10 +257,19 @@ export default function Feed() {
     if (data) setBookmarks(new Set(data.map(b => b.post_id)))
   }
 
-  // 🚫 جلب المستخدمين المحظورين
   const fetchBlockedUsers = async (userId: string) => {
     const { data } = await supabase.from('blocks').select('blocked_id').eq('blocker_id', userId)
     if (data) setBlockedUsers(new Set(data.map(b => b.blocked_id)))
+  }
+
+  // 🏷️ جلب الهاشتاجات الشائعة
+  const fetchTrendingHashtags = async () => {
+    const { data } = await supabase
+      .from('hashtags')
+      .select('*')
+      .order('count', { ascending: false })
+      .limit(10)
+    if (data) setTrendingHashtags(data)
   }
 
   const fetchStories = async () => {
@@ -272,16 +286,19 @@ export default function Feed() {
     const from = reset ? 0 : posts.length
     const to = from + POSTS_PER_PAGE - 1
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('posts')
       .select(`
         *, 
         profiles(id, username, full_name, avatar_url), 
         reactions(user_id, type),
-        comments(id, content, user_id, profiles(username, avatar_url), comment_likes(user_id))
+        comments(id, content, user_id, profiles(username, avatar_url), comment_likes(user_id)),
+        post_hashtags(hashtag_id, hashtags(name))
       `)
       .order('created_at', { ascending: false })
       .range(from, to)
+
+    const { data, error } = await query
 
     if (error) {
       setError('خطأ ف جلب المنشورات: ' + error.message)
@@ -342,22 +359,18 @@ export default function Feed() {
     }
   }
 
-  // 🚫 حظر/إلغاء حظر مستخدم
   const handleBlock = async (targetUserId: string) => {
     if (!user || targetUserId === user.id) return
     
     if (blockedUsers.has(targetUserId)) {
-      // إلغاء الحظر
       if (!confirm('واش متأكد بغيتي تلغي الحظر على هاد المستخدم؟')) return
       await supabase.from('blocks').delete().eq('blocker_id', user.id).eq('blocked_id', targetUserId)
       setBlockedUsers(prev => { const next = new Set(prev); next.delete(targetUserId); return next })
       alert('✅ تم إلغاء الحظر')
     } else {
-      // حظر
-      if (!confirm('واش متأكد بغيتي تحظر هاد المستخدم؟ ما غادي يشوف منشوراتك وما غادي تقدر تشوف منشوراتو.')) return
+      if (!confirm('واش متأكد بغيتي تحظر هاد المستخدم؟')) return
       await supabase.from('blocks').insert({ blocker_id: user.id, blocked_id: targetUserId })
       setBlockedUsers(prev => new Set(prev).add(targetUserId))
-      // إلغاء المتابعة إلا كانت
       if (following.has(targetUserId)) {
         await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', targetUserId)
         setFollowing(prev => { const next = new Set(prev); next.delete(targetUserId); return next })
@@ -365,6 +378,50 @@ export default function Feed() {
       alert('🚫 تم حظر المستخدم')
     }
     await fetchPosts(true)
+  }
+
+  // 🏷️ استخراج الهاشتاجات من النص
+  const extractHashtags = (text: string): string[] => {
+    const matches = text.match(/#[\w\u0600-\u06FF]+/g)
+    return matches ? matches.map(tag => tag.substring(1).toLowerCase()) : []
+  }
+
+  // 🏷️ حفظ الهاشتاجات فـ قاعدة البيانات
+  const saveHashtags = async (postId: string, hashtags: string[]) => {
+    for (const tagName of hashtags) {
+      // حاول إضافة الهاشتاج
+      const { data: existing } = await supabase
+        .from('hashtags')
+        .select('id')
+        .eq('name', tagName)
+        .single()
+
+      let hashtagId: string
+
+      if (existing) {
+        // هاشتاج موجود - زيد الكاونت
+        hashtagId = existing.id
+        await supabase
+          .from('hashtags')
+          .update({ count: supabase.rpc('increment', { row_id: hashtagId }) })
+          .eq('id', hashtagId)
+      } else {
+        // هاشتاج جديد
+        const { data: newHashtag } = await supabase
+          .from('hashtags')
+          .insert({ name: tagName })
+          .select('id')
+          .single()
+        
+        if (newHashtag) hashtagId = newHashtag.id
+        else continue
+      }
+
+      // ربط الهاشتاج بالمنشور
+      await supabase
+        .from('post_hashtags')
+        .insert({ post_id: postId, hashtag_id: hashtagId })
+    }
   }
 
   const handlePost = async (e: any) => {
@@ -381,8 +438,21 @@ export default function Feed() {
         const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(fileName)
         imageUrl = publicUrl
       }
-      const { error: insertError } = await supabase.from('posts').insert({ user_id: user.id, content, image_url: imageUrl }).select()
+      const { data: postData, error: insertError } = await supabase
+        .from('posts')
+        .insert({ user_id: user.id, content, image_url: imageUrl })
+        .select('id')
+        .single()
+      
       if (insertError) throw insertError
+
+      // 🏷️ حفظ الهاشتاجات
+      const hashtags = extractHashtags(content)
+      if (hashtags.length > 0 && postData) {
+        await saveHashtags(postData.id, hashtags)
+        await fetchTrendingHashtags()
+      }
+
       setContent(''); setImageFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
       await fetchPosts(true)
@@ -529,17 +599,22 @@ export default function Feed() {
 
   if (!user) return null
 
-  // 🚫 فلترة المنشورات المحظورة
+  // 🏷️ فلترة حسب الهاشتاج + البحث + الحظر
   const filteredPosts = posts.filter(post => {
-    // فلترة البحث
     const matchesSearch = post.content.toLowerCase().includes(searchQuery.toLowerCase()) || 
       post.profiles?.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       post.profiles?.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
     
-    // 🚫 فلترة المستخدمين المحظورين
     const isBlocked = blockedUsers.has(post.profiles?.id)
     
-    return matchesSearch && !isBlocked
+    // 🏷️ فلترة الهاشتاج
+    let matchesHashtag = true
+    if (selectedHashtag) {
+      const postHashtags = post.post_hashtags?.map((ph: any) => ph.hashtags?.name) || []
+      matchesHashtag = postHashtags.includes(selectedHashtag)
+    }
+    
+    return matchesSearch && !isBlocked && matchesHashtag
   })
 
   const bg = darkMode ? 'bg-gray-900' : 'bg-gray-50'
@@ -564,6 +639,25 @@ export default function Feed() {
     const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1])
     const topEmojis = sorted.slice(0, 3).map(([type]) => REACTIONS[type as keyof typeof REACTIONS].emoji)
     return { topEmojis, totalCount: reactions.length, sorted }
+  }
+
+  // 🏷️ تلوين الهاشتاجات فـ النص
+  const renderContentWithHashtags = (content: string) => {
+    const parts = content.split(/(#[\w\u0600-\u06FF]+)/g)
+    return parts.map((part, idx) => {
+      if (part.startsWith('#')) {
+        return (
+          <span 
+            key={idx} 
+            className="text-blue-500 hover:text-blue-600 cursor-pointer font-medium"
+            onClick={() => setSelectedHashtag(part.substring(1).toLowerCase())}
+          >
+            {part}
+          </span>
+        )
+      }
+      return part
+    })
   }
 
   return (
@@ -627,26 +721,14 @@ export default function Feed() {
                       <button 
                         onClick={() => setSoundEnabled(!soundEnabled)}
                         className={`text-xs px-2 py-1 rounded ${soundEnabled ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}
-                        title={soundEnabled ? 'إيقاف الصوت' : 'تفعيل الصوت'}
                       >
                         {soundEnabled ? '🔊' : '🔇'}
                       </button>
                       <button 
                         onClick={togglePushNotifications}
                         className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${
-                          pushEnabled 
-                            ? 'bg-green-100 text-green-600' 
-                            : pushPermission === 'denied'
-                            ? 'bg-red-100 text-red-600'
-                            : 'bg-gray-100 text-gray-500'
+                          pushEnabled ? 'bg-green-100 text-green-600' : pushPermission === 'denied' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'
                         }`}
-                        title={
-                          pushEnabled 
-                            ? 'إيقاف إشعارات المتصفح' 
-                            : pushPermission === 'denied'
-                            ? 'الإشعارات موقوفة من المتصفح'
-                            : 'تفعيل إشعارات المتصفح'
-                        }
                       >
                         {pushEnabled ? <BellRing size={14} /> : <BellOff size={14} />}
                       </button>
@@ -726,9 +808,48 @@ export default function Feed() {
           </div>
         </div>
 
+        {/* 🏷️ قسم الهاشتاجات الشائعة */}
+        {trendingHashtags.length > 0 && (
+          <div className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
+            <div className="flex items-center gap-2 mb-3">
+              <Hash size={18} className="text-blue-500" />
+              <h3 className={`font-bold ${textPrimary}`}>الهاشتاجات الشائعة</h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {selectedHashtag && (
+                <button
+                  onClick={() => setSelectedHashtag(null)}
+                  className="px-3 py-1 rounded-full text-sm bg-red-100 text-red-600 hover:bg-red-200 transition flex items-center gap-1"
+                >
+                  <X size={14} /> إلغاء الفلتر
+                </button>
+              )}
+              {trendingHashtags.map((tag) => (
+                <button
+                  key={tag.id}
+                  onClick={() => setSelectedHashtag(tag.name)}
+                  className={`px-3 py-1 rounded-full text-sm transition ${
+                    selectedHashtag === tag.name
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-400'
+                  }`}
+                >
+                  #{tag.name} <span className="text-xs opacity-75">({tag.count})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
           <form onSubmit={handlePost} className="space-y-3">
-            <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="شنو كاين ف بالك؟" className={`w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputBg}`} rows={3} />
+            <textarea 
+              value={content} 
+              onChange={e => setContent(e.target.value)} 
+              placeholder="شنو كاين ف بالك؟ استعمل #هاشتاج..." 
+              className={`w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputBg}`} 
+              rows={3} 
+            />
             {imageFile && (
               <div className="relative w-fit">
                 <img src={URL.createObjectURL(imageFile)} alt="Preview" className="max-h-48 rounded-lg border border-gray-200" />
@@ -751,7 +872,7 @@ export default function Feed() {
 
         {filteredPosts.length === 0 ? (
           <p className={`text-center p-6 rounded-xl shadow border ${cardBg} ${textSecondary}`}>
-            {searchQuery ? 'ما لقينا والو كيطابق البحث ديالك 🔍' : 'مازال ما كاين حتى منشور'}
+            {searchQuery ? 'ما لقينا والو كيطابق البحث ديالك 🔍' : selectedHashtag ? `ما كاين حتى منشور بـ #${selectedHashtag}` : 'مازال ما كاين حتى منشور'}
           </p>
         ) : (
           <>
@@ -788,13 +909,10 @@ export default function Feed() {
                           <button onClick={() => handleFollow(post.profiles.id)} className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium transition ${following.has(post.profiles.id) ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
                             {following.has(post.profiles.id) ? <><Check size={16} /> متابع</> : <><UserPlus size={16} /> متابعة</>}
                           </button>
-                          {/* 🚫 زر الحظر */}
                           <button 
                             onClick={() => handleBlock(post.profiles.id)}
                             className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium transition ${
-                              blockedUsers.has(post.profiles.id) 
-                                ? 'bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400' 
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300'
+                              blockedUsers.has(post.profiles.id) ? 'bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300'
                             }`}
                             title={blockedUsers.has(post.profiles.id) ? 'إلغاء الحظر' : 'حظر المستخدم'}
                           >
@@ -818,7 +936,7 @@ export default function Feed() {
                       </div>
                     </div>
                   ) : (
-                    <p className={`${textPrimary} mb-3 whitespace-pre-wrap`}>{post.content}</p>
+                    <p className={`${textPrimary} mb-3 whitespace-pre-wrap`}>{renderContentWithHashtags(post.content)}</p>
                   )}
                   
                   {post.image_url && <img src={post.image_url} alt="Post" className="w-full rounded-lg mb-3 max-h-96 object-cover border border-gray-200" />}
