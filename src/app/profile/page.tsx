@@ -110,40 +110,18 @@ export default function Profile() {
     
     setDeleting(true)
     try {
-      // 1. حذف الصور من Storage (avatars)
-      const { data: avatarFiles } = await supabase.storage.from('avatars').list()
-      const userAvatars = avatarFiles?.filter(f => f.name.startsWith(user.id)) || []
-      if (userAvatars.length > 0) {
-        await supabase.storage.from('avatars').remove(userAvatars.map(f => f.name))
-      }
+      const { error } = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+      }).then(r => r.json())
 
-      // 2. حذف الصور من Storage (posts)
-      const { data: postFiles } = await supabase.storage.from('posts').list()
-      const userPosts = postFiles?.filter(f => f.name.startsWith(user.id)) || []
-      if (userPosts.length > 0) {
-        await supabase.storage.from('posts').remove(userPosts.map(f => f.name))
-      }
+      if (error) throw new Error(error)
 
-      // 3. حذف كل البيانات المرتبطة بالمستخدم (الترتيب مهم بسبب foreign keys)
-      await supabase.from('messages').delete().eq('sender_id', user.id)
-      await supabase.from('comment_likes').delete().eq('user_id', user.id)
-      await supabase.from('comments').delete().eq('user_id', user.id)
-      await supabase.from('likes').delete().eq('user_id', user.id)
-      await supabase.from('notifications').delete().eq('user_id', user.id)
-      await supabase.from('notifications').delete().eq('actor_id', user.id)
-      await supabase.from('follows').delete().eq('follower_id', user.id)
-      await supabase.from('follows').delete().eq('following_id', user.id)
-      await supabase.from('posts').delete().eq('user_id', user.id)
-      await supabase.from('conversations').delete().or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
-      await supabase.from('profiles').delete().eq('id', user.id)
-
-      // 4. تسجيل الخروج
       await supabase.auth.signOut()
-
-      // 5. رسالة النجاح
       alert('✅ تم حذف حسابك بنجاح. نشكرك على تجربتك مع Molios Empire!')
-      
-      // 6. التوجيه للصفحة الرئيسية
       window.location.href = '/'
     } catch (error: any) {
       console.error('Error deleting account:', error)
