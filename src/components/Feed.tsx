@@ -49,7 +49,6 @@ export default function Feed() {
   const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null)
   const [trendingHashtags, setTrendingHashtags] = useState<any[]>([])
   
-  // 💬 حالات الردود
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyTexts, setReplyTexts] = useState<{[key: string]: string}>({})
   const [showReplies, setShowReplies] = useState<{[key: string]: boolean}>({})
@@ -119,6 +118,7 @@ export default function Feed() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks' }, () => fetchBookmarks(user.id))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, () => fetchStories())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'hashtags' }, () => fetchTrendingHashtags())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_badges' }, () => {})
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, async (payload) => {
         if (payload.new.user_id === user.id) {
           setNotifications(prev => [payload.new, ...prev])
@@ -153,8 +153,8 @@ export default function Feed() {
 
   const showToast = (notification: any) => {
     const toast = {
-      id: Date.now(),
-      message: getNotificationText(notification),
+      id: Date.now() + Math.random(),
+      message: notification.message || getNotificationText(notification),
       type: notification.type
     }
     setToasts(prev => [...prev, toast])
@@ -362,6 +362,82 @@ export default function Feed() {
     })
   }
 
+  // 🏆 نظام منح الشارات
+  const checkAndAwardBadges = async (userId: string) => {
+    const { count: postsCount } = await supabase
+      .from('posts')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+
+    const { count: commentsCount } = await supabase
+      .from('comments')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+
+    const { count: likesCount } = await supabase
+      .from('likes')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+
+    const { count: followersCount } = await supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('following_id', userId)
+
+    const { count: imagesCount } = await supabase
+      .from('posts')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .not('image_url', 'is', null)
+
+    const { count: messagesCount } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('sender_id', userId)
+
+    const { data: allBadges } = await supabase.from('badges').select('*')
+    
+    const { data: userBadges } = await supabase
+      .from('user_badges')
+      .select('badge_id')
+      .eq('user_id', userId)
+    
+    const earnedBadgeIds = new Set(userBadges?.map((ub: any) => ub.badge_id) || [])
+
+    for (const badge of allBadges || []) {
+      if (earnedBadgeIds.has(badge.id)) continue
+
+      let shouldAward = false
+
+      if (badge.requirement_type === 'posts' && (postsCount || 0) >= badge.requirement_value) {
+        shouldAward = true
+      } else if (badge.requirement_type === 'comments' && (commentsCount || 0) >= badge.requirement_value) {
+        shouldAward = true
+      } else if (badge.requirement_type === 'likes' && (likesCount || 0) >= badge.requirement_value) {
+        shouldAward = true
+      } else if (badge.requirement_type === 'followers' && (followersCount || 0) >= badge.requirement_value) {
+        shouldAward = true
+      } else if (badge.requirement_type === 'images' && (imagesCount || 0) >= badge.requirement_value) {
+        shouldAward = true
+      } else if (badge.requirement_type === 'messages' && (messagesCount || 0) >= badge.requirement_value) {
+        shouldAward = true
+      }
+
+      if (shouldAward) {
+        const { error: insertError } = await supabase
+          .from('user_badges')
+          .insert({ user_id: userId, badge_id: badge.id })
+        
+        if (!insertError) {
+          showToast({
+            type: 'badge',
+            message: `🏆 مبروك! ربحتي شارة "${badge.name}" ${badge.icon}`
+          })
+        }
+      }
+    }
+  }
+
   const handleFollow = async (targetUserId: string) => {
     if (!user || targetUserId === user.id) return
     if (following.has(targetUserId)) {
@@ -371,6 +447,7 @@ export default function Feed() {
       await supabase.from('follows').insert({ follower_id: user.id, following_id: targetUserId })
       setFollowing(prev => new Set(prev).add(targetUserId))
       await sendNotification(targetUserId, 'follow')
+      await checkAndAwardBadges(targetUserId)
     }
   }
 
@@ -412,10 +489,7 @@ export default function Feed() {
 
       if (existing) {
         hashtagId = existing.id
-        await supabase
-          .from('hashtags')
-          .update({ count: supabase.rpc('increment', { row_id: hashtagId }) })
-          .eq('id', hashtagId)
+        await supabase.rpc('increment_count', { badge_id: hashtagId }).catch(() => {})
       } else {
         const { data: newHashtag } = await supabase
           .from('hashtags')
@@ -430,6 +504,7 @@ export default function Feed() {
       await supabase
         .from('post_hashtags')
         .insert({ post_id: postId, hashtag_id: hashtagId })
+        .catch(() => {})
     }
   }
 
@@ -464,6 +539,9 @@ export default function Feed() {
       setContent(''); setImageFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
       await fetchPosts(true)
+      
+      // 🏆 فحص الشارات بعد النشر
+      await checkAndAwardBadges(user.id)
     } catch (err: any) { setError('خطأ: ' + err.message) }
     finally { setLoading(false) }
   }
@@ -524,9 +602,11 @@ export default function Feed() {
     setCommentTexts({ ...commentTexts, [postId]: '' })
     if (inserted && inserted[0]) await sendNotification(postOwnerId, 'comment', postId, inserted[0].id)
     await fetchPosts(true)
+    
+    // 🏆 فحص الشارات بعد التعليق
+    if (user) await checkAndAwardBadges(user.id)
   }
 
-  // 💬 الرد على تعليق
   const handleReply = async (commentId: string, commentOwnerId: string, postId: string) => {
     const text = replyTexts[commentId]
     if (!text?.trim()) return
@@ -708,9 +788,10 @@ export default function Feed() {
                 {toast.type === 'comment' && <span className="text-2xl">💬</span>}
                 {toast.type === 'comment_like' && <span className="text-2xl">❤️</span>}
                 {toast.type === 'follow' && <span className="text-2xl">👥</span>}
+                {toast.type === 'badge' && <span className="text-2xl">🏆</span>}
               </div>
               <div className="flex-1">
-                <p className={`text-sm ${textPrimary}`} dangerouslySetInnerHTML={{ __html: toast.message }} />
+                <p className={`text-sm ${textPrimary}`}>{toast.message}</p>
               </div>
               <button onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))} className="text-gray-400 hover:text-gray-600">
                 <X size={16} />
@@ -1109,7 +1190,6 @@ export default function Feed() {
                             </div>
                           </div>
 
-                          {/* 💬 الردود */}
                           {showReplies[comment.id] && comment.comment_replies?.length > 0 && (
                             <div className="ml-8 space-y-2">
                               {comment.comment_replies.map((reply: any) => (
@@ -1148,7 +1228,6 @@ export default function Feed() {
                             </div>
                           )}
 
-                          {/* 💬 حقل الرد */}
                           {replyingTo === comment.id && (
                             <div className="ml-8 flex gap-2">
                               <input 
