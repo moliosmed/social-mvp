@@ -548,10 +548,9 @@ export default function Feed() {
                   
                   <div className="flex items-center gap-2 mb-2 border-t border-b py-2 relative">
                     {/* 🎭 زر التفاعل الرئيسي */}
-                    <div className="relative flex-1">
+                    <div className="relative flex-1" onMouseLeave={() => setShowReactionPicker(null)}>
                       <button 
                         onMouseEnter={() => setShowReactionPicker(post.id)}
-                        onMouseLeave={() => setShowReactionPicker(null)}
                         onClick={() => handleReaction(post.id, post.user_id, myReaction?.type || 'like')}
                         className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg transition ${
                           myReaction 
