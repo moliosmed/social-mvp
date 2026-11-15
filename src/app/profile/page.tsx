@@ -18,12 +18,15 @@ export default function Profile() {
   const [editBio, setEditBio] = useState('')
   const [saving, setSaving] = useState(false)
   
-  // 🌟 التبويب النشط
-  const [activeTab, setActiveTab] = useState<'posts' | 'saved'>('posts')
+  const [activeTab, setActiveTab] = useState<'posts' | 'saved' | 'badges'>('posts')
   
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
+
+  // 🏆 حالات الشارات
+  const [badges, setBadges] = useState<any[]>([])
+  const [allBadges, setAllBadges] = useState<any[]>([])
 
   const supabase = createClient()
 
@@ -41,7 +44,6 @@ export default function Profile() {
       setEditName(profileData?.full_name || '')
       setEditBio(profileData?.bio || '')
 
-      // جلب منشوراتي
       const { data: postsData } = await supabase
         .from('posts')
         .select('*')
@@ -49,7 +51,6 @@ export default function Profile() {
         .order('created_at', { ascending: false })
       setMyPosts(postsData || [])
 
-      // 🌟 جلب المحفوظات
       const { data: bookmarksData } = await supabase
         .from('bookmarks')
         .select(`
@@ -76,6 +77,26 @@ export default function Profile() {
         following: following || 0,
         bookmarks: saved.length
       })
+
+      // 🏆 جلب الشارات المكتسبة
+      const { data: userBadges } = await supabase
+        .from('user_badges')
+        .select(`
+          *,
+          badges(id, name, description, icon)
+        `)
+        .eq('user_id', user.id)
+        .order('earned_at', { ascending: false })
+      
+      setBadges(userBadges || [])
+
+      // 🏆 جلب كل الشارات المتاحة
+      const { data: availableBadges } = await supabase
+        .from('badges')
+        .select('*')
+        .order('name', { ascending: true })
+      
+      setAllBadges(availableBadges || [])
     }
     getData()
   }, [])
@@ -129,7 +150,6 @@ export default function Profile() {
     }
   }
 
-  // 🌟 حذف منشور من البروفايل
   const handleDeletePost = async (postId: string) => {
     if (!confirm('واش متأكد بغيتي تحيد هاد المنشور؟')) return
     const { error } = await supabase.from('posts').delete().eq('id', postId)
@@ -141,7 +161,6 @@ export default function Profile() {
     }
   }
 
-  // 🌟 إلغاء حفظ منشور من البروفايل
   const handleRemoveBookmark = async (postId: string) => {
     const { error } = await supabase.from('bookmarks').delete().eq('post_id', postId).eq('user_id', user.id)
     if (!error) {
@@ -172,6 +191,7 @@ export default function Profile() {
 
       await supabase.from('messages').delete().eq('sender_id', user.id)
       await supabase.from('bookmarks').delete().eq('user_id', user.id)
+      await supabase.from('user_badges').delete().eq('user_id', user.id)
       await supabase.from('comment_likes').delete().eq('user_id', user.id)
       await supabase.from('comments').delete().eq('user_id', user.id)
       await supabase.from('likes').delete().eq('user_id', user.id)
@@ -196,6 +216,9 @@ export default function Profile() {
   if (!user || !profile) {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">جاري التحميل...</div>
   }
+
+  // 🏷️ الشارات المكتسبة
+  const earnedBadgeIds = new Set(badges.map(b => b.badge_id))
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -292,7 +315,7 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* 🌟 التبويبين */}
+        {/* التبويبات */}
         <div className="flex border-b border-gray-200 mb-4 bg-white rounded-t-xl shadow-sm">
           <button
             onClick={() => setActiveTab('posts')}
@@ -314,11 +337,21 @@ export default function Profile() {
           >
             <Bookmark size={16} /> المحفوظات
           </button>
+          <button
+            onClick={() => setActiveTab('badges')}
+            className={`flex-1 py-3 px-4 text-sm font-medium transition flex items-center justify-center gap-2 ${
+              activeTab === 'badges'
+                ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50/50'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <span>🏆</span> الشارات
+          </button>
         </div>
 
-        {/* 🌟 محتوى التبويب النشط */}
+        {/* محتوى التبويب */}
         <div className="space-y-4">
-          {activeTab === 'posts' ? (
+          {activeTab === 'posts' && (
             <>
               {myPosts.length === 0 ? (
                 <p className="text-center text-gray-500 bg-white p-6 rounded-xl shadow">مازال ما نشرتي والو</p>
@@ -341,7 +374,9 @@ export default function Profile() {
                 ))
               )}
             </>
-          ) : (
+          )}
+
+          {activeTab === 'saved' && (
             <>
               {savedPosts.length === 0 ? (
                 <div className="text-center text-gray-500 bg-white p-8 rounded-xl shadow">
@@ -381,6 +416,60 @@ export default function Profile() {
                 ))
               )}
             </>
+          )}
+
+          {/* 🏆 تبويب الشارات */}
+          {activeTab === 'badges' && (
+            <div className="bg-white p-6 rounded-xl shadow">
+              <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <span>🏆</span> الشارات والإنجازات
+                <span className="text-sm font-normal text-gray-500">({badges.length}/{allBadges.length})</span>
+              </h2>
+              
+              {allBadges.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">ما كاين حتى شارة متاحة</p>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                  {allBadges.map((badge: any) => {
+                    const earned = earnedBadgeIds.has(badge.id)
+                    const earnedDate = badges.find(b => b.badge_id === badge.id)?.earned_at
+                    
+                    return (
+                      <div 
+                        key={badge.id} 
+                        className={`relative flex flex-col items-center p-3 rounded-lg border transition-all cursor-pointer ${
+                          earned 
+                            ? 'bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border-yellow-300 dark:border-yellow-700 hover:scale-105' 
+                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 opacity-50 grayscale'
+                        }`}
+                        title={`${badge.name}: ${badge.description}${earned ? `\n✓ تم الربح: ${new Date(earnedDate).toLocaleDateString('ar-MA')}` : ''}`}
+                      >
+                        <span className="text-4xl mb-1">{badge.icon}</span>
+                        <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 text-center">{badge.name}</p>
+                        {earned && earnedDate && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            {new Date(earnedDate).toLocaleDateString('ar-MA')}
+                          </p>
+                        )}
+                        {earned && (
+                          <div className="absolute top-1 right-1 text-green-500">
+                            <Check size={14} />
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              
+              {badges.length === 0 && (
+                <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-center">
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    💡 ابدأ بالتفاعل مع التطبيق (نشر، تعليق، إعجاب) باش تربح شارات!
+                  </p>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -422,7 +511,7 @@ export default function Profile() {
                 <li>كل التعليقات والإعجابات والمحفوظات</li>
                 <li>كل الرسائل والمحادثات</li>
                 <li>كل المتابعين والمتابَعين</li>
-                <li>كل الإشعارات</li>
+                <li>كل الإشعارات والشارات</li>
                 <li>صورة البروفايل والـ Bio</li>
               </ul>
             </div>
