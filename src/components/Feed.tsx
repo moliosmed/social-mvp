@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Heart, Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save } from 'lucide-react'
+import { Heart, Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -27,6 +27,9 @@ export default function Feed() {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editCommentText, setEditCommentText] = useState('')
   
+  // 🌟 حالات المحفوظات
+  const [bookmarks, setBookmarks] = useState<Set<string>>(new Set())
+  
   const fileInputRef = useRef<HTMLInputElement>(null)
   const observerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
@@ -48,6 +51,7 @@ export default function Feed() {
       setUser(user)
       if (user) {
         await fetchFollowing(user.id)
+        await fetchBookmarks(user.id)
         await fetchPosts(true)
         fetchNotifications(user.id)
       }
@@ -64,6 +68,7 @@ export default function Feed() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_likes' }, () => fetchPosts(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks' }, () => fetchBookmarks(user.id))
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
         if (payload.new.user_id === user.id) {
           setNotifications(prev => [payload.new, ...prev])
@@ -96,6 +101,12 @@ export default function Feed() {
   const fetchFollowing = async (userId: string) => {
     const { data } = await supabase.from('follows').select('following_id').eq('follower_id', userId)
     if (data) setFollowing(new Set(data.map(f => f.following_id)))
+  }
+
+  // 🌟 جلب المحفوظات
+  const fetchBookmarks = async (userId: string) => {
+    const { data } = await supabase.from('bookmarks').select('post_id').eq('user_id', userId)
+    if (data) setBookmarks(new Set(data.map(b => b.post_id)))
   }
 
   const fetchPosts = async (reset = false) => {
@@ -256,7 +267,6 @@ export default function Feed() {
     else alert('خطأ ف الحذف: ' + error.message)
   }
 
-  // 🌟 ميزة تعديل التعليقات
   const handleEditComment = (commentId: string, currentText: string) => {
     setEditingCommentId(commentId)
     setEditCommentText(currentText)
@@ -277,6 +287,25 @@ export default function Feed() {
   const handleCancelEdit = () => {
     setEditingCommentId(null)
     setEditCommentText('')
+  }
+
+  // 🌟 ميزة الحفظ/إلغاء الحفظ
+  const handleBookmark = async (postId: string) => {
+    if (!user) return
+    
+    if (bookmarks.has(postId)) {
+      // إلغاء الحفظ
+      await supabase.from('bookmarks').delete().eq('post_id', postId).eq('user_id', user.id)
+      setBookmarks(prev => {
+        const next = new Set(prev)
+        next.delete(postId)
+        return next
+      })
+    } else {
+      // حفظ
+      await supabase.from('bookmarks').insert({ post_id: postId, user_id: user.id })
+      setBookmarks(prev => new Set(prev).add(postId))
+    }
   }
 
   const handleShare = async (post: any) => {
@@ -468,6 +497,14 @@ export default function Feed() {
                   </button>
                   <button onClick={() => handleShare(post)} className={`flex items-center gap-1 transition ${textSecondary} hover:text-green-500`}>
                     <Share2 size={18} /> <span className="text-sm">مشاركة</span>
+                  </button>
+                  {/* 🌟 زر الحفظ الجديد */}
+                  <button 
+                    onClick={() => handleBookmark(post.id)}
+                    className={`flex items-center gap-1 transition ml-auto ${bookmarks.has(post.id) ? 'text-yellow-500' : `${textSecondary} hover:text-yellow-500`}`}
+                    title={bookmarks.has(post.id) ? 'إلغاء الحفظ' : 'حفظ المنشور'}
+                  >
+                    <Bookmark size={18} className={bookmarks.has(post.id) ? 'fill-yellow-500' : ''} />
                   </button>
                 </div>
 
