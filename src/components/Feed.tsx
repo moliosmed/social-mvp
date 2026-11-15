@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing } from 'lucide-react'
+import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing, Ban } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -41,9 +41,11 @@ export default function Feed() {
   const [toasts, setToasts] = useState<any[]>([])
   const [soundEnabled, setSoundEnabled] = useState(true)
   
-  // 📱 حالات إشعارات المتصفح
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushPermission, setPushPermission] = useState<NotificationPermission>('default')
+  
+  // 🚫 حالات الحظر
+  const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set())
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const storyInputRef = useRef<HTMLInputElement>(null)
@@ -70,7 +72,6 @@ export default function Feed() {
     localStorage.setItem('darkMode', darkMode.toString())
   }, [darkMode])
 
-  // 📱 تحميل حالة push من localStorage
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setPushPermission(Notification.permission)
@@ -88,6 +89,7 @@ export default function Feed() {
       if (user) {
         await fetchFollowing(user.id)
         await fetchBookmarks(user.id)
+        await fetchBlockedUsers(user.id)
         await fetchStories()
         await fetchPosts(true)
         fetchNotifications(user.id)
@@ -112,10 +114,7 @@ export default function Feed() {
           setNotifications(prev => [payload.new, ...prev])
           showToast(payload.new)
           if (soundEnabled) playNotificationSound()
-          // 📱 إظهار إشعار المتصفح
-          if (pushEnabled) {
-            await showBrowserNotification(payload.new)
-          }
+          if (pushEnabled) await showBrowserNotification(payload.new)
         }
       })
       .subscribe()
@@ -142,7 +141,6 @@ export default function Feed() {
     return () => observer.disconnect()
   }, [hasMore, loadingMore, posts.length])
 
-  // 🔔 Toast
   const showToast = (notification: any) => {
     const toast = {
       id: Date.now(),
@@ -161,7 +159,6 @@ export default function Feed() {
     audio.play().catch(() => {})
   }
 
-  // 📱 تفعيل/إيقاف إشعارات المتصفح
   const togglePushNotifications = async () => {
     if (!('Notification' in window)) {
       alert('المتصفح ديالك ما كيدعمش إشعارات المتصفح')
@@ -169,11 +166,9 @@ export default function Feed() {
     }
 
     if (pushEnabled) {
-      // إيقاف
       setPushEnabled(false)
       localStorage.setItem('pushEnabled', 'false')
     } else {
-      // تفعيل - طلب الإذن
       if (Notification.permission === 'granted') {
         setPushEnabled(true)
         localStorage.setItem('pushEnabled', 'true')
@@ -192,9 +187,8 @@ export default function Feed() {
     }
   }
 
-  // 📱 إظهار إشعار المتصفح
   const showBrowserNotification = async (notification: any) => {
-    if (document.visibilityState === 'visible') return // ما تبانش إلا المستخدم كيشوف الموقع
+    if (document.visibilityState === 'visible') return
     
     const actorName = notification.actor?.username || 'مستخدم'
     let title = 'إشعار جديد'
@@ -239,7 +233,6 @@ export default function Feed() {
     }
   }
 
-  // 📱 إشعار تجريبي
   const showTestNotification = () => {
     if (Notification.permission === 'granted') {
       new Notification('🎉 تم تفعيل الإشعارات!', {
@@ -257,6 +250,12 @@ export default function Feed() {
   const fetchBookmarks = async (userId: string) => {
     const { data } = await supabase.from('bookmarks').select('post_id').eq('user_id', userId)
     if (data) setBookmarks(new Set(data.map(b => b.post_id)))
+  }
+
+  // 🚫 جلب المستخدمين المحظورين
+  const fetchBlockedUsers = async (userId: string) => {
+    const { data } = await supabase.from('blocks').select('blocked_id').eq('blocker_id', userId)
+    if (data) setBlockedUsers(new Set(data.map(b => b.blocked_id)))
   }
 
   const fetchStories = async () => {
@@ -341,6 +340,31 @@ export default function Feed() {
       setFollowing(prev => new Set(prev).add(targetUserId))
       await sendNotification(targetUserId, 'follow')
     }
+  }
+
+  // 🚫 حظر/إلغاء حظر مستخدم
+  const handleBlock = async (targetUserId: string) => {
+    if (!user || targetUserId === user.id) return
+    
+    if (blockedUsers.has(targetUserId)) {
+      // إلغاء الحظر
+      if (!confirm('واش متأكد بغيتي تلغي الحظر على هاد المستخدم؟')) return
+      await supabase.from('blocks').delete().eq('blocker_id', user.id).eq('blocked_id', targetUserId)
+      setBlockedUsers(prev => { const next = new Set(prev); next.delete(targetUserId); return next })
+      alert('✅ تم إلغاء الحظر')
+    } else {
+      // حظر
+      if (!confirm('واش متأكد بغيتي تحظر هاد المستخدم؟ ما غادي يشوف منشوراتك وما غادي تقدر تشوف منشوراتو.')) return
+      await supabase.from('blocks').insert({ blocker_id: user.id, blocked_id: targetUserId })
+      setBlockedUsers(prev => new Set(prev).add(targetUserId))
+      // إلغاء المتابعة إلا كانت
+      if (following.has(targetUserId)) {
+        await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', targetUserId)
+        setFollowing(prev => { const next = new Set(prev); next.delete(targetUserId); return next })
+      }
+      alert('🚫 تم حظر المستخدم')
+    }
+    await fetchPosts(true)
   }
 
   const handlePost = async (e: any) => {
@@ -505,11 +529,18 @@ export default function Feed() {
 
   if (!user) return null
 
-  const filteredPosts = posts.filter(post => 
-    post.content.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    post.profiles?.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    post.profiles?.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // 🚫 فلترة المنشورات المحظورة
+  const filteredPosts = posts.filter(post => {
+    // فلترة البحث
+    const matchesSearch = post.content.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      post.profiles?.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      post.profiles?.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
+    
+    // 🚫 فلترة المستخدمين المحظورين
+    const isBlocked = blockedUsers.has(post.profiles?.id)
+    
+    return matchesSearch && !isBlocked
+  })
 
   const bg = darkMode ? 'bg-gray-900' : 'bg-gray-50'
   const cardBg = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'
@@ -600,7 +631,6 @@ export default function Feed() {
                       >
                         {soundEnabled ? '🔊' : '🔇'}
                       </button>
-                      {/* 📱 زر تفعيل Push */}
                       <button 
                         onClick={togglePushNotifications}
                         className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${
@@ -754,9 +784,23 @@ export default function Feed() {
                         </>
                       )}
                       {post.user_id !== user.id && (
-                        <button onClick={() => handleFollow(post.profiles.id)} className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium transition ${following.has(post.profiles.id) ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
-                          {following.has(post.profiles.id) ? <><Check size={16} /> متابع</> : <><UserPlus size={16} /> متابعة</>}
-                        </button>
+                        <>
+                          <button onClick={() => handleFollow(post.profiles.id)} className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium transition ${following.has(post.profiles.id) ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+                            {following.has(post.profiles.id) ? <><Check size={16} /> متابع</> : <><UserPlus size={16} /> متابعة</>}
+                          </button>
+                          {/* 🚫 زر الحظر */}
+                          <button 
+                            onClick={() => handleBlock(post.profiles.id)}
+                            className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium transition ${
+                              blockedUsers.has(post.profiles.id) 
+                                ? 'bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400' 
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300'
+                            }`}
+                            title={blockedUsers.has(post.profiles.id) ? 'إلغاء الحظر' : 'حظر المستخدم'}
+                          >
+                            <Ban size={16} />
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
