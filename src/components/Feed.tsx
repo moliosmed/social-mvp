@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Heart, Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark } from 'lucide-react'
+import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -27,14 +27,27 @@ export default function Feed() {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editCommentText, setEditCommentText] = useState('')
   
-  // 🌟 حالات المحفوظات
+  // حالات المحفوظات
   const [bookmarks, setBookmarks] = useState<Set<string>>(new Set())
+  
+  // 🎭 حالات التفاعلات
+  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const observerRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
   const POSTS_PER_PAGE = 10
+
+  // 🎭 تعريف التفاعلات
+  const REACTIONS = {
+    like: { emoji: '👍', label: 'Like', color: 'text-blue-500' },
+    love: { emoji: '❤️', label: 'Love', color: 'text-red-500' },
+    haha: { emoji: '😂', label: 'Haha', color: 'text-yellow-500' },
+    wow: { emoji: '😮', label: 'Wow', color: 'text-yellow-500' },
+    sad: { emoji: '😢', label: 'Sad', color: 'text-yellow-500' },
+    angry: { emoji: '😡', label: 'Angry', color: 'text-orange-500' }
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem('darkMode')
@@ -65,7 +78,7 @@ export default function Feed() {
     const channel = supabase
       .channel('realtime-social')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => fetchPosts(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'likes' }, () => fetchPosts(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reactions' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_likes' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks' }, () => fetchBookmarks(user.id))
@@ -103,7 +116,6 @@ export default function Feed() {
     if (data) setFollowing(new Set(data.map(f => f.following_id)))
   }
 
-  // 🌟 جلب المحفوظات
   const fetchBookmarks = async (userId: string) => {
     const { data } = await supabase.from('bookmarks').select('post_id').eq('user_id', userId)
     if (data) setBookmarks(new Set(data.map(b => b.post_id)))
@@ -119,7 +131,7 @@ export default function Feed() {
       .select(`
         *, 
         profiles(id, username, full_name, avatar_url), 
-        likes(user_id), 
+        reactions(user_id, type),
         comments(
           id, 
           content, 
@@ -220,14 +232,31 @@ export default function Feed() {
     finally { setLoading(false) }
   }
 
-  const handleLike = async (postId: string, postOwnerId: string) => {
-    const { data: existing } = await supabase.from('likes').select('id').eq('post_id', postId).eq('user_id', user.id).single()
-    if (existing) {
-      await supabase.from('likes').delete().eq('id', existing.id)
+  // 🎭 ميزة التفاعلات المتعددة
+  const handleReaction = async (postId: string, postOwnerId: string, reactionType: string) => {
+    if (!user) return
+    
+    const existing = post => post.reactions?.find((r: any) => r.user_id === user.id)
+    const post = posts.find(p => p.id === postId)
+    const myReaction = post ? existing(post) : null
+    
+    if (myReaction && myReaction.type === reactionType) {
+      // نفس التفاعل → إلغاء
+      await supabase.from('reactions').delete().eq('post_id', postId).eq('user_id', user.id)
+    } else if (myReaction) {
+      // تفاعل مختلف → تحديث
+      await supabase.from('reactions').update({ type: reactionType }).eq('post_id', postId).eq('user_id', user.id)
     } else {
-      await supabase.from('likes').insert({ post_id: postId, user_id: user.id })
+      // تفاعل جديد
+      await supabase.from('reactions').insert({ 
+        post_id: postId, 
+        user_id: user.id, 
+        type: reactionType 
+      })
       await sendNotification(postOwnerId, 'like', postId)
     }
+    
+    setShowReactionPicker(null)
     await fetchPosts(true)
   }
 
@@ -289,12 +318,10 @@ export default function Feed() {
     setEditCommentText('')
   }
 
-  // 🌟 ميزة الحفظ/إلغاء الحفظ
   const handleBookmark = async (postId: string) => {
     if (!user) return
     
     if (bookmarks.has(postId)) {
-      // إلغاء الحفظ
       await supabase.from('bookmarks').delete().eq('post_id', postId).eq('user_id', user.id)
       setBookmarks(prev => {
         const next = new Set(prev)
@@ -302,7 +329,6 @@ export default function Feed() {
         return next
       })
     } else {
-      // حفظ
       await supabase.from('bookmarks').insert({ post_id: postId, user_id: user.id })
       setBookmarks(prev => new Set(prev).add(postId))
     }
@@ -343,11 +369,27 @@ export default function Feed() {
 
   const getNotificationText = (n: any) => {
     const actorName = n.actor?.username || 'مستخدم'
-    if (n.type === 'like') return `<b>${actorName}</b> عجبو منشورك`
+    if (n.type === 'like') return `<b>${actorName}</b> تفاعل مع منشورك`
     if (n.type === 'comment') return `<b>${actorName}</b> علق على منشورك`
     if (n.type === 'comment_like') return `<b>${actorName}</b> عجبو تعليقك`
     if (n.type === 'follow') return `<b>${actorName}</b> بدا كيتبعك`
     return 'إشعار جديد'
+  }
+
+  // 🎭 دالة لحساب التفاعلات
+  const getReactionSummary = (reactions: any[]) => {
+    if (!reactions || reactions.length === 0) return null
+    
+    const counts: {[key: string]: number} = {}
+    reactions.forEach(r => {
+      counts[r.type] = (counts[r.type] || 0) + 1
+    })
+    
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1])
+    const topEmojis = sorted.slice(0, 3).map(([type]) => REACTIONS[type as keyof typeof REACTIONS].emoji)
+    const totalCount = reactions.length
+    
+    return { topEmojis, totalCount, sorted }
   }
 
   return (
@@ -459,139 +501,195 @@ export default function Feed() {
           </p>
         ) : (
           <>
-            {filteredPosts.map(post => (
-              <div key={post.id} className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    {post.profiles?.avatar_url ? (
-                      <img src={post.profiles.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
-                    ) : (
-                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
-                        {post.profiles?.username?.[0]?.toUpperCase() || 'U'}
-                      </div>
-                    )}
-                    <span className={`font-bold ${textPrimary}`}>{post.profiles?.full_name || post.profiles?.username}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {post.user_id === user.id && (
-                      <button onClick={() => handleDeletePost(post.id)} className="text-gray-400 hover:text-red-600 transition p-1" title="حذف المنشور">
-                        <Trash2 size={18} />
-                      </button>
-                    )}
-                    {post.user_id !== user.id && (
-                      <button onClick={() => handleFollow(post.profiles.id)} className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium transition ${following.has(post.profiles.id) ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
-                        {following.has(post.profiles.id) ? <><Check size={16} /> متابع</> : <><UserPlus size={16} /> متابعة</>}
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <p className={`${textPrimary} mb-3 whitespace-pre-wrap`}>{post.content}</p>
-                {post.image_url && <img src={post.image_url} alt="Post" className="w-full rounded-lg mb-3 max-h-96 object-cover border border-gray-200" />}
-                
-                <div className="flex items-center gap-4 mb-2">
-                  <button onClick={() => handleLike(post.id, post.user_id)} className={`flex items-center gap-1 transition ${post.likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}>
-                    <Heart size={18} className={post.likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} /> <span>{post.likes?.length || 0}</span>
-                  </button>
-                  <button onClick={() => setShowComments({ ...showComments, [post.id]: !showComments[post.id] })} className={`flex items-center gap-1 transition ${textSecondary} hover:text-blue-500`}>
-                    <MessageCircle size={18} /> <span>{post.comments?.length || 0}</span>
-                  </button>
-                  <button onClick={() => handleShare(post)} className={`flex items-center gap-1 transition ${textSecondary} hover:text-green-500`}>
-                    <Share2 size={18} /> <span className="text-sm">مشاركة</span>
-                  </button>
-                  {/* 🌟 زر الحفظ الجديد */}
-                  <button 
-                    onClick={() => handleBookmark(post.id)}
-                    className={`flex items-center gap-1 transition ml-auto ${bookmarks.has(post.id) ? 'text-yellow-500' : `${textSecondary} hover:text-yellow-500`}`}
-                    title={bookmarks.has(post.id) ? 'إلغاء الحفظ' : 'حفظ المنشور'}
-                  >
-                    <Bookmark size={18} className={bookmarks.has(post.id) ? 'fill-yellow-500' : ''} />
-                  </button>
-                </div>
-
-                {showComments[post.id] && (
-                  <div className={`mt-4 space-y-3 border-t pt-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
-                    {post.comments?.map((comment: any, idx: number) => (
-                      <div key={idx} className={`p-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                        <div className="flex items-start gap-2">
-                          {comment.profiles?.avatar_url ? (
-                            <img src={comment.profiles.avatar_url} alt="Avatar" className="w-6 h-6 rounded-full object-cover" />
-                          ) : (
-                            <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">
-                              {comment.profiles?.username?.[0]?.toUpperCase() || 'U'}
-                            </div>
-                          )}
-                          <div className="flex-1">
-                            {editingCommentId === comment.id ? (
-                              <div className="space-y-2">
-                                <input 
-                                  type="text"
-                                  value={editCommentText}
-                                  onChange={(e) => setEditCommentText(e.target.value)}
-                                  className={`w-full p-2 border rounded-lg text-sm ${inputBg}`}
-                                  autoFocus
-                                />
-                                <div className="flex gap-2">
-                                  <button 
-                                    onClick={() => handleSaveEdit(comment.id)}
-                                    className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 transition"
-                                  >
-                                    <Save size={12} /> حفظ
-                                  </button>
-                                  <button 
-                                    onClick={handleCancelEdit}
-                                    className="flex items-center gap-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-2 py-1 rounded text-xs hover:bg-gray-300 dark:hover:bg-gray-500 transition"
-                                  >
-                                    <X size={12} /> إلغاء
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <>
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1">
-                                    <span className={`font-bold ${textPrimary}`}>{comment.profiles?.username}: </span>
-                                    <span className={textPrimary}>{comment.content}</span>
-                                  </div>
-                                  {comment.user_id === user.id && (
-                                    <div className="flex gap-1 flex-shrink-0">
-                                      <button 
-                                        onClick={() => handleEditComment(comment.id, comment.content)}
-                                        className="text-blue-500 hover:text-blue-700 transition p-1"
-                                        title="تعديل التعليق"
-                                      >
-                                        <Pencil size={14} />
-                                      </button>
-                                      <button 
-                                        onClick={() => handleDeleteComment(comment.id)}
-                                        className="text-red-500 hover:text-red-700 transition p-1"
-                                        title="حذف التعليق"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                                <button 
-                                  onClick={() => handleCommentLike(comment.id, comment.user_id, post.id)}
-                                  className={`flex items-center gap-1 mt-1 text-xs transition ${comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}
-                                >
-                                  <Heart size={12} className={comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} />
-                                  <span>{comment.comment_likes?.length || 0}</span>
-                                </button>
-                              </>
-                            )}
-                          </div>
+            {filteredPosts.map(post => {
+              const myReaction = post.reactions?.find((r: any) => r.user_id === user.id)
+              const summary = getReactionSummary(post.reactions)
+              
+              return (
+                <div key={post.id} className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      {post.profiles?.avatar_url ? (
+                        <img src={post.profiles.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+                          {post.profiles?.username?.[0]?.toUpperCase() || 'U'}
                         </div>
-                      </div>
-                    ))}
-                    <div className="flex gap-2">
-                      <input type="text" value={commentTexts[post.id] || ''} onChange={(e) => setCommentTexts({ ...commentTexts, [post.id]: e.target.value })} placeholder="كتب تعليق..." className={`flex-1 p-2 border rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm ${inputBg}`} onKeyPress={(e) => { if (e.key === 'Enter') handleComment(post.id, post.user_id) }} />
-                      <button onClick={() => handleComment(post.id, post.user_id)} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-700 transition">أرسل</button>
+                      )}
+                      <span className={`font-bold ${textPrimary}`}>{post.profiles?.full_name || post.profiles?.username}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {post.user_id === user.id && (
+                        <button onClick={() => handleDeletePost(post.id)} className="text-gray-400 hover:text-red-600 transition p-1" title="حذف المنشور">
+                          <Trash2 size={18} />
+                        </button>
+                      )}
+                      {post.user_id !== user.id && (
+                        <button onClick={() => handleFollow(post.profiles.id)} className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium transition ${following.has(post.profiles.id) ? 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+                          {following.has(post.profiles.id) ? <><Check size={16} /> متابع</> : <><UserPlus size={16} /> متابعة</>}
+                        </button>
+                      )}
                     </div>
                   </div>
-                )}
-              </div>
-            ))}
+                  <p className={`${textPrimary} mb-3 whitespace-pre-wrap`}>{post.content}</p>
+                  {post.image_url && <img src={post.image_url} alt="Post" className="w-full rounded-lg mb-3 max-h-96 object-cover border border-gray-200" />}
+                  
+                  {/* 🎭 ملخص التفاعلات */}
+                  {summary && summary.totalCount > 0 && (
+                    <div className={`flex items-center gap-2 mb-2 text-sm ${textSecondary}`}>
+                      <div className="flex -space-x-1">
+                        {summary.topEmojis.map((emoji, idx) => (
+                          <span key={idx} className="text-base">{emoji}</span>
+                        ))}
+                      </div>
+                      <span>{summary.totalCount}</span>
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center gap-2 mb-2 border-t border-b py-2 relative">
+                    {/* 🎭 زر التفاعل الرئيسي */}
+                    <div className="relative flex-1">
+                      <button 
+                        onMouseEnter={() => setShowReactionPicker(post.id)}
+                        onMouseLeave={() => setShowReactionPicker(null)}
+                        onClick={() => handleReaction(post.id, post.user_id, myReaction?.type || 'like')}
+                        className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg transition ${
+                          myReaction 
+                            ? `${REACTIONS[myReaction.type as keyof typeof REACTIONS].color} font-medium` 
+                            : `${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700`
+                        }`}
+                      >
+                        {myReaction ? (
+                          <>
+                            <span className="text-xl">{REACTIONS[myReaction.type as keyof typeof REACTIONS].emoji}</span>
+                            <span className="text-sm">{REACTIONS[myReaction.type as keyof typeof REACTIONS].label}</span>
+                          </>
+                        ) : (
+                          <>
+                            <ThumbsUp size={18} />
+                            <span className="text-sm">تفاعل</span>
+                          </>
+                        )}
+                      </button>
+                      
+                      {/* 🎭 قائمة التفاعلات المنبثقة */}
+                      {showReactionPicker === post.id && (
+                        <div className={`absolute bottom-full left-0 mb-2 flex gap-1 p-2 rounded-full shadow-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                          {Object.entries(REACTIONS).map(([type, data]) => (
+                            <button
+                              key={type}
+                              onClick={() => handleReaction(post.id, post.user_id, type)}
+                              onMouseEnter={() => setShowReactionPicker(post.id)}
+                              className="text-2xl hover:scale-125 transition-transform p-1"
+                              title={data.label}
+                            >
+                              {data.emoji}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    
+                    <button onClick={() => setShowComments({ ...showComments, [post.id]: !showComments[post.id] })} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg transition ${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700`}>
+                      <MessageCircle size={18} /> <span className="text-sm">{post.comments?.length || 0}</span>
+                    </button>
+                    <button onClick={() => handleShare(post)} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg transition ${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700`}>
+                      <Share2 size={18} /> <span className="text-sm hidden sm:inline">مشاركة</span>
+                    </button>
+                    <button 
+                      onClick={() => handleBookmark(post.id)}
+                      className={`flex items-center justify-center p-2 rounded-lg transition ${bookmarks.has(post.id) ? 'text-yellow-500' : `${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700`}`}
+                      title={bookmarks.has(post.id) ? 'إلغاء الحفظ' : 'حفظ'}
+                    >
+                      <Bookmark size={18} className={bookmarks.has(post.id) ? 'fill-yellow-500' : ''} />
+                    </button>
+                  </div>
+
+                  {showComments[post.id] && (
+                    <div className={`mt-4 space-y-3 border-t pt-3 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                      {post.comments?.map((comment: any, idx: number) => (
+                        <div key={idx} className={`p-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                          <div className="flex items-start gap-2">
+                            {comment.profiles?.avatar_url ? (
+                              <img src={comment.profiles.avatar_url} alt="Avatar" className="w-6 h-6 rounded-full object-cover" />
+                            ) : (
+                              <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">
+                                {comment.profiles?.username?.[0]?.toUpperCase() || 'U'}
+                              </div>
+                            )}
+                            <div className="flex-1">
+                              {editingCommentId === comment.id ? (
+                                <div className="space-y-2">
+                                  <input 
+                                    type="text"
+                                    value={editCommentText}
+                                    onChange={(e) => setEditCommentText(e.target.value)}
+                                    className={`w-full p-2 border rounded-lg text-sm ${inputBg}`}
+                                    autoFocus
+                                  />
+                                  <div className="flex gap-2">
+                                    <button 
+                                      onClick={() => handleSaveEdit(comment.id)}
+                                      className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 transition"
+                                    >
+                                      <Save size={12} /> حفظ
+                                    </button>
+                                    <button 
+                                      onClick={handleCancelEdit}
+                                      className="flex items-center gap-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-2 py-1 rounded text-xs hover:bg-gray-300 dark:hover:bg-gray-500 transition"
+                                    >
+                                      <X size={12} /> إلغاء
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1">
+                                      <span className={`font-bold ${textPrimary}`}>{comment.profiles?.username}: </span>
+                                      <span className={textPrimary}>{comment.content}</span>
+                                    </div>
+                                    {comment.user_id === user.id && (
+                                      <div className="flex gap-1 flex-shrink-0">
+                                        <button 
+                                          onClick={() => handleEditComment(comment.id, comment.content)}
+                                          className="text-blue-500 hover:text-blue-700 transition p-1"
+                                          title="تعديل التعليق"
+                                        >
+                                          <Pencil size={14} />
+                                        </button>
+                                        <button 
+                                          onClick={() => handleDeleteComment(comment.id)}
+                                          className="text-red-500 hover:text-red-700 transition p-1"
+                                          title="حذف التعليق"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <button 
+                                    onClick={() => handleCommentLike(comment.id, comment.user_id, post.id)}
+                                    className={`flex items-center gap-1 mt-1 text-xs transition ${comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'text-red-500' : `${textSecondary} hover:text-red-500`}`}
+                                  >
+                                    <Heart size={12} className={comment.comment_likes?.some((l: any) => l.user_id === user.id) ? 'fill-red-500' : ''} />
+                                    <span>{comment.comment_likes?.length || 0}</span>
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="flex gap-2">
+                        <input type="text" value={commentTexts[post.id] || ''} onChange={(e) => setCommentTexts({ ...commentTexts, [post.id]: e.target.value })} placeholder="كتب تعليق..." className={`flex-1 p-2 border rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm ${inputBg}`} onKeyPress={(e) => { if (e.key === 'Enter') handleComment(post.id, post.user_id) }} />
+                        <button onClick={() => handleComment(post.id, post.user_id)} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-700 transition">أرسل</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
             
             <div ref={observerRef} className="flex justify-center py-4">
               {loadingMore && (
