@@ -72,6 +72,16 @@ export default function Feed() {
 
   const POSTS_PER_PAGE = 10
 
+  // 🎭 تعريف التفاعلات
+  const REACTIONS = {
+    like: { emoji: '👍', label: 'Like', color: 'text-blue-500' },
+    love: { emoji: '❤️', label: 'Love', color: 'text-red-500' },
+    haha: { emoji: '😂', label: 'Haha', color: 'text-yellow-500' },
+    wow: { emoji: '😮', label: 'Wow', color: 'text-yellow-500' },
+    sad: { emoji: '😢', label: 'Sad', color: 'text-yellow-500' },
+    angry: { emoji: '😡', label: 'Angry', color: 'text-orange-500' }
+  }
+
   // 🌐 قاموس الترجمة
   const translations = {
     ar: {
@@ -526,13 +536,13 @@ export default function Feed() {
       let hashtagId: string
       if (existing) {
         hashtagId = existing.id
-        await supabase.rpc('increment_count', { badge_id: hashtagId }).catch(() => {})
+        await supabase.rpc('increment_count', { badge_id: hashtagId }).then(() => {}, () => {})
       } else {
         const { data: newHashtag } = await supabase.from('hashtags').insert({ name: tagName }).select('id').single()
         if (newHashtag) hashtagId = newHashtag.id
         else continue
       }
-      await supabase.from('post_hashtags').insert({ post_id: postId, hashtag_id: hashtagId }).catch(() => {})
+      await supabase.from('post_hashtags').insert({ post_id: postId, hashtag_id: hashtagId }).then(() => {}, () => {})
     }
   }
 
