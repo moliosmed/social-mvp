@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing, Ban, Hash, Reply, RefreshCw, Users, BarChart3, Vote } from 'lucide-react'
+import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing, Ban, Hash, Reply, RefreshCw, Users, BarChart3, Vote, FileText, TrendingUp, Activity } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -27,9 +27,7 @@ export default function Feed() {
   const [editCommentText, setEditCommentText] = useState('')
   
   const [bookmarks, setBookmarks] = useState<Set<string>>(new Set())
-  
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null)
-  
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
   const [editPostContent, setEditPostContent] = useState('')
   
@@ -40,12 +38,10 @@ export default function Feed() {
   
   const [toasts, setToasts] = useState<any[]>([])
   const [soundEnabled, setSoundEnabled] = useState(true)
-  
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushPermission, setPushPermission] = useState<NotificationPermission>('default')
   
   const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set())
-  
   const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null)
   const [trendingHashtags, setTrendingHashtags] = useState<any[]>([])
   
@@ -55,11 +51,21 @@ export default function Feed() {
   
   const [suggestedUsers, setSuggestedUsers] = useState<any[]>([])
   
-  // 📊 حالات الاستطلاعات
   const [showPollCreator, setShowPollCreator] = useState(false)
   const [pollQuestion, setPollQuestion] = useState('')
   const [pollOptions, setPollOptions] = useState<string[]>(['', ''])
-  const [pollDuration, setPollDuration] = useState(24) // بالساعات
+  const [pollDuration, setPollDuration] = useState(24)
+  
+  // 📊 حالات الإحصائيات
+  const [communityStats, setCommunityStats] = useState({
+    users: 0,
+    posts: 0,
+    comments: 0,
+    reactions: 0,
+    groups: 0,
+    messages: 0
+  })
+  const [showStats, setShowStats] = useState(false)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const storyInputRef = useRef<HTMLInputElement>(null)
@@ -105,6 +111,7 @@ export default function Feed() {
         await fetchTrendingHashtags()
         await fetchSuggestedUsers(user.id)
         await fetchStories()
+        await fetchCommunityStats() // 📊 جلب الإحصائيات
         await fetchPosts(true)
         fetchNotifications(user.id)
       }
@@ -116,16 +123,17 @@ export default function Feed() {
     if (!user?.id) return
     const channel = supabase
       .channel('realtime-social')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => fetchPosts(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reactions' }, () => fetchPosts(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => fetchPosts(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => { fetchPosts(true); fetchCommunityStats() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reactions' }, () => { fetchPosts(true); fetchCommunityStats() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => { fetchPosts(true); fetchCommunityStats() })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_likes' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comment_replies' }, () => fetchPosts(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookmarks' }, () => fetchBookmarks(user.id))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, () => fetchStories())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stories' }, () => { fetchStories(); fetchCommunityStats() })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'hashtags' }, () => fetchTrendingHashtags())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_badges' }, () => {})
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'poll_votes' }, () => fetchPosts(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'groups' }, () => fetchCommunityStats())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchCommunityStats())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, async (payload) => {
         if (payload.new.user_id === user.id) {
           setNotifications(prev => [payload.new, ...prev])
@@ -228,6 +236,31 @@ export default function Feed() {
   const fetchStories = async () => {
     const { data } = await supabase.from('stories').select(`*, profiles(id, username, avatar_url)`).gte('expires_at', new Date().toISOString()).order('created_at', { ascending: false })
     if (data) setStories(data)
+  }
+
+  // 📊 جلب إحصائيات المجتمع
+  const fetchCommunityStats = async () => {
+    try {
+      const [usersRes, postsRes, commentsRes, reactionsRes, groupsRes, messagesRes] = await Promise.all([
+        supabase.from('profiles').select('id', { count: 'exact', head: true }),
+        supabase.from('posts').select('id', { count: 'exact', head: true }),
+        supabase.from('comments').select('id', { count: 'exact', head: true }),
+        supabase.from('reactions').select('id', { count: 'exact', head: true }),
+        supabase.from('groups').select('id', { count: 'exact', head: true }),
+        supabase.from('messages').select('id', { count: 'exact', head: true })
+      ])
+
+      setCommunityStats({
+        users: usersRes.count || 0,
+        posts: postsRes.count || 0,
+        comments: commentsRes.count || 0,
+        reactions: reactionsRes.count || 0,
+        groups: groupsRes.count || 0,
+        messages: messagesRes.count || 0
+      })
+    } catch (err) {
+      console.error('Error fetching stats:', err)
+    }
   }
 
   const fetchPosts = async (reset = false) => {
@@ -362,38 +395,28 @@ export default function Feed() {
       let hashtagId: string
       if (existing) {
         hashtagId = existing.id
-        await supabase.rpc('increment_count', { badge_id: hashtagId }).then(() => {}, () => {})
+        await supabase.rpc('increment_count', { badge_id: hashtagId }).catch(() => {})
       } else {
         const { data: newHashtag } = await supabase.from('hashtags').insert({ name: tagName }).select('id').single()
         if (newHashtag) hashtagId = newHashtag.id
         else continue
       }
-      await supabase.from('post_hashtags').insert({ post_id: postId, hashtag_id: hashtagId }).then(() => {}, () => {})
+      await supabase.from('post_hashtags').insert({ post_id: postId, hashtag_id: hashtagId }).catch(() => {})
     }
   }
 
-  // 📊 إنشاء استطلاع
   const createPoll = async (postId: string) => {
     if (!pollQuestion.trim() || pollOptions.filter(o => o.trim()).length < 2) {
       alert('خاص السؤال و 2 خيارات على الأقل')
       return null
     }
-
     const expiresAt = new Date(Date.now() + pollDuration * 60 * 60 * 1000).toISOString()
-
-    const { data: poll, error: pollError } = await supabase
-      .from('polls')
-      .insert({ post_id: postId, question: pollQuestion, expires_at: expiresAt })
-      .select()
-      .single()
-
+    const { data: poll, error: pollError } = await supabase.from('polls').insert({ post_id: postId, question: pollQuestion, expires_at: expiresAt }).select().single()
     if (pollError || !poll) return null
-
     const validOptions = pollOptions.filter(o => o.trim())
     for (let i = 0; i < validOptions.length; i++) {
       await supabase.from('poll_options').insert({ poll_id: poll.id, option_text: validOptions[i], position: i + 1 })
     }
-
     return poll
   }
 
@@ -413,21 +436,17 @@ export default function Feed() {
       }
       const { data: postData, error: insertError } = await supabase.from('posts').insert({ user_id: user.id, content, image_url: imageUrl }).select('id').single()
       if (insertError) throw insertError
-
-      // 📊 إنشاء الاستطلاع إلا كان
       if (showPollCreator && postData) {
         await createPoll(postData.id)
         setShowPollCreator(false)
         setPollQuestion('')
         setPollOptions(['', ''])
       }
-
       const hashtags = extractHashtags(content)
       if (hashtags.length > 0 && postData) {
         await saveHashtags(postData.id, hashtags)
         await fetchTrendingHashtags()
       }
-
       setContent('')
       localStorage.removeItem('post_draft')
       setImageFile(null)
@@ -438,7 +457,6 @@ export default function Feed() {
     finally { setLoading(false) }
   }
 
-  // 📊 التصويت
   const handleVote = async (pollId: string, optionId: string) => {
     if (!user) return
     await supabase.from('poll_votes').delete().eq('poll_id', pollId).eq('user_id', user.id)
@@ -609,21 +627,24 @@ export default function Feed() {
     })
   }
 
-  // 📊 حساب نتائج الاستطلاع
   const getPollResults = (poll: any) => {
     if (!poll?.poll_options) return { totalVotes: 0, options: [] }
-    
     const options = poll.poll_options.map((opt: any) => ({
       ...opt,
       votes: opt.poll_votes?.length || 0,
       userVoted: opt.poll_votes?.some((v: any) => v.user_id === user.id) || false
     }))
-    
     const totalVotes = options.reduce((sum: number, opt: any) => sum + opt.votes, 0)
     const userVoted = options.some((opt: any) => opt.userVoted)
     const isExpired = poll.expires_at && new Date(poll.expires_at) < new Date()
-    
     return { totalVotes, options, userVoted, isExpired }
+  }
+
+  // 📊 دالة لتنسيق الأرقام الكبيرة
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
+    return num.toString()
   }
 
   return (
@@ -687,6 +708,98 @@ export default function Feed() {
 
       <div className="max-w-2xl mx-auto p-4 space-y-6">
         {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">{error}</div>}
+
+        {/* 📊 بانر إحصائيات المجتمع */}
+        <div className={`rounded-xl shadow border overflow-hidden ${cardBg} transition-colors duration-300`}>
+          <button 
+            onClick={() => setShowStats(!showStats)}
+            className={`w-full p-3 flex items-center justify-between hover:bg-opacity-80 transition ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}
+          >
+            <div className="flex items-center gap-2">
+              <div className={`p-2 rounded-lg ${darkMode ? 'bg-gradient-to-br from-blue-600 to-purple-600' : 'bg-gradient-to-br from-blue-500 to-purple-500'}`}>
+                <Activity size={18} className="text-white" />
+              </div>
+              <div className="text-right">
+                <h3 className={`font-bold text-sm ${textPrimary}`}>إحصائيات المجتمع</h3>
+                <p className="text-xs text-gray-500">التطبيق نشط وحي!</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="hidden sm:flex items-center gap-3">
+                <div className="text-center">
+                  <p className="text-lg font-bold text-blue-600">{formatNumber(communityStats.users)}</p>
+                  <p className="text-xs text-gray-500">عضو</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-green-600">{formatNumber(communityStats.posts)}</p>
+                  <p className="text-xs text-gray-500">منشور</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-purple-600">{formatNumber(communityStats.reactions)}</p>
+                  <p className="text-xs text-gray-500">تفاعل</p>
+                </div>
+              </div>
+              <ChevronRight size={20} className={`text-gray-400 transition-transform ${showStats ? 'rotate-90' : ''}`} />
+            </div>
+          </button>
+
+          {showStats && (
+            <div className={`border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'} p-4 animate-fadeIn`}>
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                <div className={`p-3 rounded-lg ${darkMode ? 'bg-blue-900/20' : 'bg-blue-50'}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Users size={16} className="text-blue-600" />
+                    <span className="text-xs text-gray-500">الأعضاء</span>
+                  </div>
+                  <p className="text-2xl font-bold text-blue-600">{formatNumber(communityStats.users)}</p>
+                </div>
+                <div className={`p-3 rounded-lg ${darkMode ? 'bg-green-900/20' : 'bg-green-50'}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <FileText size={16} className="text-green-600" />
+                    <span className="text-xs text-gray-500">المنشورات</span>
+                  </div>
+                  <p className="text-2xl font-bold text-green-600">{formatNumber(communityStats.posts)}</p>
+                </div>
+                <div className={`p-3 rounded-lg ${darkMode ? 'bg-purple-900/20' : 'bg-purple-50'}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingUp size={16} className="text-purple-600" />
+                    <span className="text-xs text-gray-500">التفاعلات</span>
+                  </div>
+                  <p className="text-2xl font-bold text-purple-600">{formatNumber(communityStats.reactions)}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className={`p-3 rounded-lg ${darkMode ? 'bg-orange-900/20' : 'bg-orange-50'}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <MessageCircle size={16} className="text-orange-600" />
+                    <span className="text-xs text-gray-500">التعليقات</span>
+                  </div>
+                  <p className="text-2xl font-bold text-orange-600">{formatNumber(communityStats.comments)}</p>
+                </div>
+                <div className={`p-3 rounded-lg ${darkMode ? 'bg-pink-900/20' : 'bg-pink-50'}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Users size={16} className="text-pink-600" />
+                    <span className="text-xs text-gray-500">المجموعات</span>
+                  </div>
+                  <p className="text-2xl font-bold text-pink-600">{formatNumber(communityStats.groups)}</p>
+                </div>
+                <div className={`p-3 rounded-lg ${darkMode ? 'bg-cyan-900/20' : 'bg-cyan-50'}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Send size={16} className="text-cyan-600" />
+                    <span className="text-xs text-gray-500">الرسائل</span>
+                  </div>
+                  <p className="text-2xl font-bold text-cyan-600">{formatNumber(communityStats.messages)}</p>
+                </div>
+              </div>
+              <button 
+                onClick={fetchCommunityStats}
+                className={`w-full mt-3 flex items-center justify-center gap-2 py-2 rounded-lg text-sm transition ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}
+              >
+                <RefreshCw size={14} /> تحديث الإحصائيات
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className={`p-4 rounded-xl shadow border ${cardBg} transition-colors duration-300`}>
           <div className="flex gap-4 overflow-x-auto pb-2">
@@ -753,7 +866,6 @@ export default function Feed() {
           <form onSubmit={handlePost} className="space-y-3">
             <textarea value={content} onChange={e => { setContent(e.target.value); localStorage.setItem('post_draft', e.target.value) }} placeholder="شنو كاين ف بالك؟ استعمل #هاشتاج..." className={`w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputBg}`} rows={3} />
             
-            {/* 📊 منشئ الاستطلاع */}
             {showPollCreator && (
               <div className={`p-3 rounded-lg border-2 border-dashed ${darkMode ? 'border-purple-500 bg-purple-900/10' : 'border-purple-400 bg-purple-50'}`}>
                 <div className="flex items-center justify-between mb-2">
@@ -762,53 +874,17 @@ export default function Feed() {
                   </h4>
                   <button type="button" onClick={() => setShowPollCreator(false)} className="text-gray-500 hover:text-gray-700"><X size={16} /></button>
                 </div>
-                <input 
-                  type="text" 
-                  value={pollQuestion}
-                  onChange={(e) => setPollQuestion(e.target.value)}
-                  placeholder="سؤال الاستطلاع..."
-                  className={`w-full p-2 mb-2 border rounded-lg text-sm ${inputBg}`}
-                />
+                <input type="text" value={pollQuestion} onChange={(e) => setPollQuestion(e.target.value)} placeholder="سؤال الاستطلاع..." className={`w-full p-2 mb-2 border rounded-lg text-sm ${inputBg}`} />
                 {pollOptions.map((opt, idx) => (
                   <div key={idx} className="flex gap-2 mb-2">
-                    <input 
-                      type="text"
-                      value={opt}
-                      onChange={(e) => {
-                        const newOpts = [...pollOptions]
-                        newOpts[idx] = e.target.value
-                        setPollOptions(newOpts)
-                      }}
-                      placeholder={`الخيار ${idx + 1}`}
-                      className={`flex-1 p-2 border rounded-lg text-sm ${inputBg}`}
-                    />
-                    {pollOptions.length > 2 && (
-                      <button 
-                        type="button"
-                        onClick={() => setPollOptions(pollOptions.filter((_, i) => i !== idx))}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <X size={16} />
-                      </button>
-                    )}
+                    <input type="text" value={opt} onChange={(e) => { const newOpts = [...pollOptions]; newOpts[idx] = e.target.value; setPollOptions(newOpts) }} placeholder={`الخيار ${idx + 1}`} className={`flex-1 p-2 border rounded-lg text-sm ${inputBg}`} />
+                    {pollOptions.length > 2 && (<button type="button" onClick={() => setPollOptions(pollOptions.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700"><X size={16} /></button>)}
                   </div>
                 ))}
-                {pollOptions.length < 4 && (
-                  <button 
-                    type="button"
-                    onClick={() => setPollOptions([...pollOptions, ''])}
-                    className="text-sm text-purple-600 hover:text-purple-700 flex items-center gap-1"
-                  >
-                    <Plus size={14} /> إضافة خيار
-                  </button>
-                )}
+                {pollOptions.length < 4 && (<button type="button" onClick={() => setPollOptions([...pollOptions, ''])} className="text-sm text-purple-600 hover:text-purple-700 flex items-center gap-1"><Plus size={14} /> إضافة خيار</button>)}
                 <div className="mt-2">
                   <label className="text-xs text-gray-500">مدة الاستطلاع:</label>
-                  <select 
-                    value={pollDuration}
-                    onChange={(e) => setPollDuration(Number(e.target.value))}
-                    className={`ml-2 p-1 border rounded text-sm ${inputBg}`}
-                  >
+                  <select value={pollDuration} onChange={(e) => setPollDuration(Number(e.target.value))} className={`ml-2 p-1 border rounded text-sm ${inputBg}`}>
                     <option value={1}>1 ساعة</option>
                     <option value={6}>6 ساعات</option>
                     <option value={24}>24 ساعة</option>
@@ -829,11 +905,7 @@ export default function Feed() {
               <div className="flex gap-2">
                 <input type="file" ref={fileInputRef} accept="image/*" onChange={(e) => setImageFile(e.target.files?.[0] || null)} className="hidden" id="image-upload" />
                 <label htmlFor="image-upload" className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'}`}><ImageIcon size={20} /> <span className="text-sm hidden sm:inline">صورة</span></label>
-                <button 
-                  type="button"
-                  onClick={() => setShowPollCreator(!showPollCreator)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg transition ${showPollCreator ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400' : darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'}`}
-                >
+                <button type="button" onClick={() => setShowPollCreator(!showPollCreator)} className={`flex items-center gap-2 px-3 py-2 rounded-lg transition ${showPollCreator ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400' : darkMode ? 'text-purple-400 hover:bg-gray-700' : 'text-purple-600 hover:bg-purple-50'}`}>
                   <BarChart3 size={20} /> <span className="text-sm hidden sm:inline">استطلاع</span>
                 </button>
               </div>
@@ -885,66 +957,30 @@ export default function Feed() {
                   
                   {post.image_url && <img src={post.image_url} alt="Post" className="w-full rounded-lg mb-3 max-h-96 object-cover border border-gray-200" />}
                   
-                  {/* 📊 عرض الاستطلاع */}
                   {pollResults && (
                     <div className={`mb-3 p-4 rounded-lg border-2 ${darkMode ? 'border-purple-500/30 bg-purple-900/10' : 'border-purple-200 bg-purple-50/50'}`}>
                       <div className="flex items-center gap-2 mb-3">
                         <BarChart3 size={18} className={darkMode ? 'text-purple-400' : 'text-purple-600'} />
                         <h4 className={`font-bold ${textPrimary}`}>{poll.question}</h4>
                       </div>
-                      
                       <div className="space-y-2">
                         {pollResults.options.map((opt: any) => {
                           const percentage = pollResults.totalVotes > 0 ? (opt.votes / pollResults.totalVotes) * 100 : 0
                           const showResults = pollResults.userVoted || pollResults.isExpired
-                          
                           return (
-                            <button
-                              key={opt.id}
-                              onClick={() => !showResults && !pollResults.isExpired && handleVote(poll.id, opt.id)}
-                              disabled={showResults || pollResults.isExpired}
-                              className={`w-full text-left p-3 rounded-lg border-2 transition relative overflow-hidden ${
-                                opt.userVoted 
-                                  ? darkMode ? 'border-purple-500 bg-purple-900/30' : 'border-purple-500 bg-purple-100'
-                                  : showResults
-                                  ? darkMode ? 'border-gray-600 bg-gray-700/50' : 'border-gray-200 bg-gray-50'
-                                  : darkMode ? 'border-gray-600 hover:border-purple-500 hover:bg-gray-700' : 'border-gray-200 hover:border-purple-500 hover:bg-purple-50'
-                              } ${showResults || pollResults.isExpired ? 'cursor-default' : 'cursor-pointer'}`}
-                            >
-                              {showResults && (
-                                <div 
-                                  className={`absolute top-0 left-0 h-full transition-all ${
-                                    opt.userVoted 
-                                      ? darkMode ? 'bg-purple-500/30' : 'bg-purple-200'
-                                      : darkMode ? 'bg-gray-600/50' : 'bg-gray-200'
-                                  }`}
-                                  style={{ width: `${percentage}%` }}
-                                />
-                              )}
+                            <button key={opt.id} onClick={() => !showResults && !pollResults.isExpired && handleVote(poll.id, opt.id)} disabled={showResults || pollResults.isExpired} className={`w-full text-left p-3 rounded-lg border-2 transition relative overflow-hidden ${opt.userVoted ? darkMode ? 'border-purple-500 bg-purple-900/30' : 'border-purple-500 bg-purple-100' : showResults ? darkMode ? 'border-gray-600 bg-gray-700/50' : 'border-gray-200 bg-gray-50' : darkMode ? 'border-gray-600 hover:border-purple-500 hover:bg-gray-700' : 'border-gray-200 hover:border-purple-500 hover:bg-purple-50'} ${showResults || pollResults.isExpired ? 'cursor-default' : 'cursor-pointer'}`}>
+                              {showResults && (<div className={`absolute top-0 left-0 h-full transition-all ${opt.userVoted ? darkMode ? 'bg-purple-500/30' : 'bg-purple-200' : darkMode ? 'bg-gray-600/50' : 'bg-gray-200'}`} style={{ width: `${percentage}%` }} />)}
                               <div className="relative flex items-center justify-between">
-                                <span className={`font-medium text-sm ${textPrimary}`}>
-                                  {opt.userVoted && '✓ '}{opt.option_text}
-                                </span>
-                                {showResults && (
-                                  <span className={`text-sm font-bold ${textPrimary}`}>
-                                    {percentage.toFixed(1)}% ({opt.votes})
-                                  </span>
-                                )}
+                                <span className={`font-medium text-sm ${textPrimary}`}>{opt.userVoted && '✓ '}{opt.option_text}</span>
+                                {showResults && (<span className={`text-sm font-bold ${textPrimary}`}>{percentage.toFixed(1)}% ({opt.votes})</span>)}
                               </div>
                             </button>
                           )
                         })}
                       </div>
-                      
                       <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                        <span className="flex items-center gap-1">
-                          <Vote size={12} /> {pollResults.totalVotes} صوت
-                        </span>
-                        {pollResults.isExpired ? (
-                          <span className="text-red-500 font-medium">انتهى الاستطلاع</span>
-                        ) : poll.expires_at ? (
-                          <span>ينتهي في {new Date(poll.expires_at).toLocaleDateString('ar-MA')} {new Date(poll.expires_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}</span>
-                        ) : null}
+                        <span className="flex items-center gap-1"><Vote size={12} /> {pollResults.totalVotes} صوت</span>
+                        {pollResults.isExpired ? (<span className="text-red-500 font-medium">انتهى الاستطلاع</span>) : poll.expires_at ? (<span>ينتهي في {new Date(poll.expires_at).toLocaleDateString('ar-MA')} {new Date(poll.expires_at).toLocaleTimeString('ar-MA', { hour: '2-digit', minute: '2-digit' })}</span>) : null}
                       </div>
                     </div>
                   )}
