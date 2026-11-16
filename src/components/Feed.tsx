@@ -388,13 +388,13 @@ export default function Feed() {
       let hashtagId: string
       if (existing) {
         hashtagId = existing.id
-        await supabase.rpc('increment_count', { badge_id: hashtagId }).catch(() => {})
+        await supabase.rpc('increment_count', { badge_id: hashtagId }).then(() => {}, () => {})
       } else {
         const { data: newHashtag } = await supabase.from('hashtags').insert({ name: tagName }).select('id').single()
         if (newHashtag) hashtagId = newHashtag.id
         else continue
       }
-      await supabase.from('post_hashtags').insert({ post_id: postId, hashtag_id: hashtagId }).catch(() => {})
+      await supabase.from('post_hashtags').insert({ post_id: postId, hashtag_id: hashtagId }).then(() => {}, () => {})
     }
   }
 
