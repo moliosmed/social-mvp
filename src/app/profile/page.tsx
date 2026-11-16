@@ -2,15 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { ArrowLeft, Users, UserCheck, FileText, LogOut, Camera, Pencil, Save, X, Trash2, AlertTriangle, Bookmark, Check } from 'lucide-react'
+import { ArrowLeft, Users, UserCheck, FileText, LogOut, Camera, Pencil, Save, X, Trash2, AlertTriangle, Bookmark } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Profile() {
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState<any>(null)
-  const [myPosts, setMyPosts] = useState<any[]>([])
-  const [savedPosts, setSavedPosts] = useState<any[]>([])
-  const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0, bookmarks: 0 })
+  const [posts, setPosts] = useState<any[]>([])
+  const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0 })
   const [uploading, setUploading] = useState(false)
   
   const [isEditing, setIsEditing] = useState(false)
@@ -18,15 +17,10 @@ export default function Profile() {
   const [editBio, setEditBio] = useState('')
   const [saving, setSaving] = useState(false)
   
-  const [activeTab, setActiveTab] = useState<'posts' | 'saved' | 'badges'>('posts')
-  
+  // حالات حذف الحساب
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
-
-  // 🏆 حالات الشارات
-  const [badges, setBadges] = useState<any[]>([])
-  const [allBadges, setAllBadges] = useState<any[]>([])
 
   const supabase = createClient()
 
@@ -44,29 +38,9 @@ export default function Profile() {
       setEditName(profileData?.full_name || '')
       setEditBio(profileData?.bio || '')
 
-      const { data: postsData } = await supabase
-        .from('posts')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-      setMyPosts(postsData || [])
-
-      const { data: bookmarksData } = await supabase
-        .from('bookmarks')
-        .select(`
-          *,
-          post:posts(
-            *,
-            profiles(id, username, full_name, avatar_url)
-          )
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-      
-      const saved = bookmarksData
-        ?.map((b: any) => b.post)
-        .filter((p: any) => p !== null) || []
-      setSavedPosts(saved)
+      const { data: postsData } = await supabase.from('posts').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
+      setPosts(postsData || [])
+      setStats({ posts: postsData?.length || 0, followers: 0, following: 0 })
 
       const { count: followers } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', user.id)
       const { count: following } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', user.id)
@@ -74,29 +48,8 @@ export default function Profile() {
       setStats({ 
         posts: postsData?.length || 0, 
         followers: followers || 0, 
-        following: following || 0,
-        bookmarks: saved.length
+        following: following || 0 
       })
-
-      // 🏆 جلب الشارات المكتسبة
-      const { data: userBadges } = await supabase
-        .from('user_badges')
-        .select(`
-          *,
-          badges(id, name, description, icon)
-        `)
-        .eq('user_id', user.id)
-        .order('earned_at', { ascending: false })
-      
-      setBadges(userBadges || [])
-
-      // 🏆 جلب كل الشارات المتاحة
-      const { data: availableBadges } = await supabase
-        .from('badges')
-        .select('*')
-        .order('name', { ascending: true })
-      
-      setAllBadges(availableBadges || [])
     }
     getData()
   }, [])
@@ -150,48 +103,29 @@ export default function Profile() {
     }
   }
 
-  const handleDeletePost = async (postId: string) => {
-    if (!confirm('واش متأكد بغيتي تحيد هاد المنشور؟')) return
-    const { error } = await supabase.from('posts').delete().eq('id', postId)
-    if (!error) {
-      setMyPosts(prev => prev.filter(p => p.id !== postId))
-      setStats(prev => ({ ...prev, posts: prev.posts - 1 }))
-    } else {
-      alert('خطأ ف الحذف: ' + error.message)
-    }
-  }
-
-  const handleRemoveBookmark = async (postId: string) => {
-    const { error } = await supabase.from('bookmarks').delete().eq('post_id', postId).eq('user_id', user.id)
-    if (!error) {
-      setSavedPosts(prev => prev.filter(p => p.id !== postId))
-      setStats(prev => ({ ...prev, bookmarks: prev.bookmarks - 1 }))
-    } else {
-      alert('خطأ: ' + error.message)
-    }
-  }
-
+  // 🌟 ميزة حذف الحساب
   const handleDeleteAccount = async () => {
     if (deleteConfirmText !== 'حذف') return
     if (!user) return
     
     setDeleting(true)
     try {
+      // 1. حذف الصور من Storage (avatars)
       const { data: avatarFiles } = await supabase.storage.from('avatars').list()
       const userAvatars = avatarFiles?.filter(f => f.name.startsWith(user.id)) || []
       if (userAvatars.length > 0) {
         await supabase.storage.from('avatars').remove(userAvatars.map(f => f.name))
       }
 
+      // 2. حذف الصور من Storage (posts)
       const { data: postFiles } = await supabase.storage.from('posts').list()
       const userPosts = postFiles?.filter(f => f.name.startsWith(user.id)) || []
       if (userPosts.length > 0) {
         await supabase.storage.from('posts').remove(userPosts.map(f => f.name))
       }
 
+      // 3. حذف كل البيانات المرتبطة بالمستخدم (الترتيب مهم بسبب foreign keys)
       await supabase.from('messages').delete().eq('sender_id', user.id)
-      await supabase.from('bookmarks').delete().eq('user_id', user.id)
-      await supabase.from('user_badges').delete().eq('user_id', user.id)
       await supabase.from('comment_likes').delete().eq('user_id', user.id)
       await supabase.from('comments').delete().eq('user_id', user.id)
       await supabase.from('likes').delete().eq('user_id', user.id)
@@ -203,10 +137,16 @@ export default function Profile() {
       await supabase.from('conversations').delete().or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
       await supabase.from('profiles').delete().eq('id', user.id)
 
+      // 4. تسجيل الخروج
       await supabase.auth.signOut()
-      alert('✅ تم حذف حسابك بنجاح.')
+
+      // 5. رسالة النجاح
+      alert('✅ تم حذف حسابك بنجاح. نشكرك على تجربتك مع Molios Empire!')
+      
+      // 6. التوجيه للصفحة الرئيسية
       window.location.href = '/'
     } catch (error: any) {
+      console.error('Error deleting account:', error)
       alert('خطأ ف حذف الحساب: ' + error.message)
     } finally {
       setDeleting(false)
@@ -216,9 +156,6 @@ export default function Profile() {
   if (!user || !profile) {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">جاري التحميل...</div>
   }
-
-  // 🏷️ الشارات المكتسبة
-  const earnedBadgeIds = new Set(badges.map(b => b.badge_id))
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -295,7 +232,7 @@ export default function Profile() {
             )}
           </div>
 
-          <div className="flex gap-4 border-t pt-4">
+          <div className="flex gap-6 border-t pt-4">
             <div className="text-center flex-1">
               <p className="text-xl font-bold text-gray-900">{stats.posts}</p>
               <p className="text-sm text-gray-500 flex items-center gap-1 justify-center"><FileText size={14} /> منشورات</p>
@@ -308,172 +245,25 @@ export default function Profile() {
               <p className="text-xl font-bold text-gray-900">{stats.following}</p>
               <p className="text-sm text-gray-500 flex items-center gap-1 justify-center"><UserCheck size={14} /> متابَعين</p>
             </div>
-            <div className="text-center flex-1">
-              <p className="text-xl font-bold text-yellow-600">{stats.bookmarks}</p>
-              <p className="text-sm text-gray-500 flex items-center gap-1 justify-center"><Bookmark size={14} /> محفوظات</p>
-            </div>
           </div>
         </div>
 
-        {/* التبويبات */}
-        <div className="flex border-b border-gray-200 mb-4 bg-white rounded-t-xl shadow-sm">
-          <button
-            onClick={() => setActiveTab('posts')}
-            className={`flex-1 py-3 px-4 text-sm font-medium transition flex items-center justify-center gap-2 ${
-              activeTab === 'posts'
-                ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            <FileText size={16} /> منشوراتي
-          </button>
-          <button
-            onClick={() => setActiveTab('saved')}
-            className={`flex-1 py-3 px-4 text-sm font-medium transition flex items-center justify-center gap-2 ${
-              activeTab === 'saved'
-                ? 'text-yellow-600 border-b-2 border-yellow-600 bg-yellow-50/50'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            <Bookmark size={16} /> المحفوظات
-          </button>
-          <button
-            onClick={() => setActiveTab('badges')}
-            className={`flex-1 py-3 px-4 text-sm font-medium transition flex items-center justify-center gap-2 ${
-              activeTab === 'badges'
-                ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50/50'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            <span>🏆</span> الشارات
-          </button>
-        </div>
-
-        {/* محتوى التبويب */}
+        <h2 className="text-xl font-bold text-gray-900 mb-4">منشوراتي</h2>
         <div className="space-y-4">
-          {activeTab === 'posts' && (
-            <>
-              {myPosts.length === 0 ? (
-                <p className="text-center text-gray-500 bg-white p-6 rounded-xl shadow">مازال ما نشرتي والو</p>
-              ) : (
-                myPosts.map((post: any) => (
-                  <div key={post.id} className="bg-white p-4 rounded-xl shadow">
-                    <div className="flex justify-between items-start mb-2">
-                      <p className="text-xs text-gray-400">{new Date(post.created_at).toLocaleDateString('ar-MA')}</p>
-                      <button 
-                        onClick={() => handleDeletePost(post.id)}
-                        className="text-gray-400 hover:text-red-600 transition p-1"
-                        title="حذف"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                    <p className="text-gray-800 mb-2 whitespace-pre-wrap">{post.content}</p>
-                    {post.image_url && <img src={post.image_url} alt="Post" className="w-full rounded-lg max-h-64 object-cover" />}
-                  </div>
-                ))
-              )}
-            </>
-          )}
-
-          {activeTab === 'saved' && (
-            <>
-              {savedPosts.length === 0 ? (
-                <div className="text-center text-gray-500 bg-white p-8 rounded-xl shadow">
-                  <Bookmark size={40} className="mx-auto mb-3 opacity-30" />
-                  <p className="font-medium mb-1">ما كاين حتى منشور محفوظ</p>
-                  <p className="text-sm">حفظ المنشورات من الصفحة الرئيسية باش تلقاهم هنا</p>
-                </div>
-              ) : (
-                savedPosts.map((post: any) => (
-                  <div key={post.id} className="bg-white p-4 rounded-xl shadow">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        {post.profiles?.avatar_url ? (
-                          <img src={post.profiles.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
-                        ) : (
-                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-sm">
-                            {post.profiles?.username?.[0]?.toUpperCase() || 'U'}
-                          </div>
-                        )}
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">{post.profiles?.full_name || post.profiles?.username}</p>
-                          <p className="text-xs text-gray-500">@{post.profiles?.username}</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => handleRemoveBookmark(post.id)}
-                        className="text-yellow-500 hover:text-yellow-700 transition p-1"
-                        title="إلغاء الحفظ"
-                      >
-                        <Bookmark size={18} className="fill-yellow-500" />
-                      </button>
-                    </div>
-                    <p className="text-gray-800 mb-2 whitespace-pre-wrap">{post.content}</p>
-                    {post.image_url && <img src={post.image_url} alt="Post" className="w-full rounded-lg max-h-64 object-cover mb-2" />}
-                    <p className="text-xs text-gray-400">{new Date(post.created_at).toLocaleDateString('ar-MA')}</p>
-                  </div>
-                ))
-              )}
-            </>
-          )}
-
-          {/* 🏆 تبويب الشارات */}
-          {activeTab === 'badges' && (
-            <div className="bg-white p-6 rounded-xl shadow">
-              <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <span>🏆</span> الشارات والإنجازات
-                <span className="text-sm font-normal text-gray-500">({badges.length}/{allBadges.length})</span>
-              </h2>
-              
-              {allBadges.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">ما كاين حتى شارة متاحة</p>
-              ) : (
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                  {allBadges.map((badge: any) => {
-                    const earned = earnedBadgeIds.has(badge.id)
-                    const earnedDate = badges.find(b => b.badge_id === badge.id)?.earned_at
-                    
-                    return (
-                      <div 
-                        key={badge.id} 
-                        className={`relative flex flex-col items-center p-3 rounded-lg border transition-all cursor-pointer ${
-                          earned 
-                            ? 'bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border-yellow-300 dark:border-yellow-700 hover:scale-105' 
-                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 opacity-50 grayscale'
-                        }`}
-                        title={`${badge.name}: ${badge.description}${earned ? `\n✓ تم الربح: ${new Date(earnedDate).toLocaleDateString('ar-MA')}` : ''}`}
-                      >
-                        <span className="text-4xl mb-1">{badge.icon}</span>
-                        <p className="text-xs font-semibold text-gray-900 dark:text-gray-100 text-center">{badge.name}</p>
-                        {earned && earnedDate && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            {new Date(earnedDate).toLocaleDateString('ar-MA')}
-                          </p>
-                        )}
-                        {earned && (
-                          <div className="absolute top-1 right-1 text-green-500">
-                            <Check size={14} />
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-              
-              {badges.length === 0 && (
-                <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-center">
-                  <p className="text-sm text-blue-700 dark:text-blue-300">
-                    💡 ابدأ بالتفاعل مع التطبيق (نشر، تعليق، إعجاب) باش تربح شارات!
-                  </p>
-                </div>
-              )}
-            </div>
+          {posts.length === 0 ? (
+            <p className="text-center text-gray-500 bg-white p-6 rounded-xl shadow">مازال ما نشرتي والو</p>
+          ) : (
+            posts.map((post: any) => (
+              <div key={post.id} className="bg-white p-4 rounded-xl shadow">
+                <p className="text-gray-800 mb-2 whitespace-pre-wrap">{post.content}</p>
+                {post.image_url && <img src={post.image_url} alt="Post" className="w-full rounded-lg max-h-64 object-cover mb-2" />}
+                <p className="text-xs text-gray-400">{new Date(post.created_at).toLocaleDateString('ar-MA')}</p>
+              </div>
+            ))
           )}
         </div>
 
-        {/* منطقة الخطر */}
+        {/* 🌟 منطقة الإعدادات الخطيرة */}
         <div className="mt-8 bg-white p-6 rounded-xl shadow border-2 border-red-100">
           <h3 className="text-lg font-bold text-red-600 mb-2 flex items-center gap-2">
             <AlertTriangle size={20} /> منطقة الخطر
@@ -508,10 +298,10 @@ export default function Profile() {
               <p className="text-sm text-red-800 mb-2">غادي يتحيد من حسابك:</p>
               <ul className="text-sm text-red-700 list-disc list-inside space-y-1">
                 <li>كل المنشورات والصور ديالك</li>
-                <li>كل التعليقات والإعجابات والمحفوظات</li>
+                <li>كل التعليقات والإعجابات</li>
                 <li>كل الرسائل والمحادثات</li>
                 <li>كل المتابعين والمتابَعين</li>
-                <li>كل الإشعارات والشارات</li>
+                <li>كل الإشعارات</li>
                 <li>صورة البروفايل والـ Bio</li>
               </ul>
             </div>
