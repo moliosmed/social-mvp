@@ -248,6 +248,28 @@ export default function Profile() {
           </div>
         </div>
 
+        {/* 🎁 دعوة الأصدقاء */}
+        <div className="bg-white p-6 rounded-xl shadow mb-6">
+          <h3 className="text-lg font-bold text-gray-900 mb-2">🎁 دعوة الأصدقاء</h3>
+          <p className="text-sm text-gray-500 mb-3">شارك رابط الدعوة ديالك و ربح مكافآت.</p>
+          <div className="flex gap-2">
+            <input
+              readOnly
+              value={`https://www.moliosempire.com/?ref=${profile?.username || user?.id || ''}`}
+              className="flex-1 p-2 border rounded-lg text-sm text-gray-600 bg-gray-50"
+            />
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(`https://www.moliosempire.com/?ref=${profile?.username || user?.id || ''}`)
+                alert('تم نسخ رابط الدعوة!')
+              }}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700"
+            >
+              نسخ
+            </button>
+          </div>
+        </div>
+
         <h2 className="text-xl font-bold text-gray-900 mb-4">منشوراتي</h2>
         <div className="space-y-4">
           {posts.length === 0 ? (
