@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
-import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing, Ban, Hash, Reply, RefreshCw, Users, BarChart3, Vote, FileText, TrendingUp, Activity, Globe } from 'lucide-react'
+import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing, Ban, Hash, Reply, RefreshCw, Users, BarChart3, Vote, FileText, TrendingUp, Activity, Globe, Rocket } from 'lucide-react'
 import Link from 'next/link'
 
 export default function Feed() {
@@ -60,7 +60,12 @@ export default function Feed() {
     users: 0, posts: 0, comments: 0, reactions: 0, groups: 0, messages: 0
   })
   const [showStats, setShowStats] = useState(false)
-  
+
+  // 🚀 تعزيز المنشورات
+  const [showBoostModal, setShowBoostModal] = useState(false)
+  const [boostingPost, setBoostingPost] = useState<any>(null)
+  const [boosting, setBoosting] = useState(false)
+
   // 🌐 حالات اللغة
   const [language, setLanguage] = useState<'ar' | 'en'>('ar')
   const [showLangMenu, setShowLangMenu] = useState(false)
@@ -723,6 +728,34 @@ export default function Feed() {
     else { navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`); alert(language === 'ar' ? 'تم نسخ رابط المنشور!' : 'Post link copied!') }
   }
 
+  // 🚀 تعزيز المنشور
+  const handleBoost = (post: any) => {
+    setBoostingPost(post)
+    setShowBoostModal(true)
+  }
+
+  const confirmBoost = async (plan: string) => {
+    if (!user || !boostingPost) return
+    setBoosting(true)
+    try {
+      const res = await fetch('/api/boosts/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, postId: boostingPost.id, plan }),
+      })
+      const data = await res.json()
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        alert(data.error || 'فشل إنشاء الدفع')
+        setBoosting(false)
+      }
+    } catch (e) {
+      alert('فشل إنشاء الدفع')
+      setBoosting(false)
+    }
+  }
+
   if (!user) return null
 
   const filteredPosts = posts.filter(post => {
@@ -734,6 +767,11 @@ export default function Feed() {
       matchesHashtag = postHashtags.includes(selectedHashtag)
     }
     return matchesSearch && !isBlocked && matchesHashtag
+  }).sort((a, b) => {
+    const aB = a.boosted_until && new Date(a.boosted_until) > new Date() ? 1 : 0
+    const bB = b.boosted_until && new Date(b.boosted_until) > new Date() ? 1 : 0
+    if (aB !== bB) return bB - aB
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   })
 
   const bg = darkMode ? 'bg-gray-900' : 'bg-gray-50'
@@ -1086,6 +1124,9 @@ export default function Feed() {
                     <div className="flex items-center gap-2">
                       {post.profiles?.avatar_url ? <img src={post.profiles.avatar_url} alt="Avatar" className="w-8 h-8 rounded-full object-cover" /> : <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">{post.profiles?.username?.[0]?.toUpperCase() || 'U'}</div>}
                       <span className={`font-bold ${textPrimary}`}>{post.profiles?.full_name || post.profiles?.username}</span>
+                      {post.boosted_until && new Date(post.boosted_until) > new Date() && (
+                        <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-medium">⭐ مميز</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       {post.user_id === user.id && (<>
@@ -1162,6 +1203,7 @@ export default function Feed() {
                     <button onClick={() => setShowComments({ ...showComments, [post.id]: !showComments[post.id] })} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg transition ${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700`}><MessageCircle size={18} /> <span className="text-sm">{post.comments?.length || 0} {t.comments}</span></button>
                     <button onClick={() => handleShare(post)} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg transition ${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700`}><Share2 size={18} /> <span className="text-sm hidden sm:inline">{t.share}</span></button>
                     <button onClick={() => handleBookmark(post.id)} className={`flex items-center justify-center p-2 rounded-lg transition ${bookmarks.has(post.id) ? 'text-yellow-500' : `${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700`}`} title={bookmarks.has(post.id) ? t.unbookmark : t.bookmark}><Bookmark size={18} className={bookmarks.has(post.id) ? 'fill-yellow-500' : ''} /></button>
+                    <button onClick={() => handleBoost(post)} className={`flex items-center justify-center p-2 rounded-lg transition ${post.boosted_until && new Date(post.boosted_until) > new Date() ? 'text-orange-500' : `${textSecondary} hover:bg-gray-100 dark:hover:bg-gray-700`}`} title="تعزيز المنشور"><Rocket size={18} className={post.boosted_until && new Date(post.boosted_until) > new Date() ? 'fill-orange-400' : ''} /></button>
                   </div>
 
                   {showComments[post.id] && (
@@ -1256,6 +1298,43 @@ export default function Feed() {
             </div>
             {currentStoryIndex > 0 && (<button onClick={() => { setCurrentStoryIndex(currentStoryIndex - 1); setViewingStory(stories[currentStoryIndex - 1]) }} className="absolute left-4 text-white hover:text-gray-300"><ChevronLeft size={48} /></button>)}
             {currentStoryIndex < stories.length - 1 && (<button onClick={() => { setCurrentStoryIndex(currentStoryIndex + 1); setViewingStory(stories[currentStoryIndex + 1]) }} className="absolute right-4 text-white hover:text-gray-300"><ChevronRight size={48} /></button>)}
+          </div>
+        </div>
+      )}
+
+      {/* 🚀 modal تعزيز المنشور */}
+      {showBoostModal && boostingPost && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className={`rounded-xl shadow-xl w-full max-w-md p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={`text-lg font-bold flex items-center gap-2 ${textPrimary}`}>
+                <Rocket className="text-orange-500" size={20} /> تعزيز المنشور
+              </h2>
+              <button onClick={() => { setShowBoostModal(false); setBoostingPost(null) }} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <p className={`text-sm mb-4 ${textSecondary}`}>
+              منشورك كايبان فـ الأول لـ {''} مدة التعزيز. اختر الخطة:
+            </p>
+            <div className="space-y-2">
+              {[
+                { plan: '24h', label: '24 ساعة', amount: 10 },
+                { plan: '72h', label: '72 ساعة', amount: 30 },
+                { plan: '7d', label: '7 أيام', amount: 50 },
+              ].map(p => (
+                <button
+                  key={p.plan}
+                  disabled={boosting}
+                  onClick={() => confirmBoost(p.plan)}
+                  className={`w-full flex items-center justify-between p-3 rounded-lg border transition ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'border-gray-200 hover:bg-gray-50'} disabled:opacity-50`}
+                >
+                  <span className={`font-medium ${textPrimary}`}>⭐ {p.label}</span>
+                  <span className="font-bold text-orange-500">{p.amount} MAD</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => { setShowBoostModal(false); setBoostingPost(null) }} className={`w-full mt-3 py-2 rounded-lg text-sm ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'}`}>
+              إلغاء
+            </button>
           </div>
         </div>
       )}

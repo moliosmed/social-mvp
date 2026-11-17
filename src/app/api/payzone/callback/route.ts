@@ -43,21 +43,36 @@ export async function POST(req: NextRequest) {
     const isSuccess = successStatuses.includes(status)
 
     if (isSuccess && userId) {
-      // تفعيل الـ Premium
-      await supabase
-        .from('profiles')
-        .update({ premium: true, premium_since: new Date().toISOString() })
-        .eq('id', userId)
+      if (customData.type === 'boost') {
+        // تفعيل تعزيز المنشور
+        const hours = ({ '24h': 24, '72h': 72, '7d': 168 } as any)[customData.plan] || 24
+        const now = new Date()
+        const until = new Date(now.getTime() + hours * 3600 * 1000)
+        await supabase
+          .from('posts')
+          .update({ boosted_until: until.toISOString() })
+          .eq('id', customData.postId)
+        await supabase
+          .from('boosts')
+          .update({ status: 'active', starts_at: now.toISOString(), expires_at: until.toISOString(), merchant_token: merchantToken })
+          .eq('merchant_token', merchantToken)
+      } else {
+        // تفعيل الـ Premium
+        await supabase
+          .from('profiles')
+          .update({ premium: true, premium_since: new Date().toISOString() })
+          .eq('id', userId)
 
-      await supabase
-        .from('premium_subscriptions')
-        .update({
-          status: 'active',
-          merchant_token: merchantToken,
-          updated_at: new Date().toISOString(),
-          current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        })
-        .eq('user_id', userId)
+        await supabase
+          .from('premium_subscriptions')
+          .update({
+            status: 'active',
+            merchant_token: merchantToken,
+            updated_at: new Date().toISOString(),
+            current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          })
+          .eq('user_id', userId)
+      }
     } else if (merchantToken) {
       await supabase
         .from('premium_subscriptions')
