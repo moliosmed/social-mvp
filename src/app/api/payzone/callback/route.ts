@@ -56,6 +56,10 @@ export async function POST(req: NextRequest) {
           .from('boosts')
           .update({ status: 'active', starts_at: now.toISOString(), expires_at: until.toISOString(), merchant_token: merchantToken })
           .eq('merchant_token', merchantToken)
+      } else if (customData.type === 'group') {
+        // انضمام لمجموعة مدفوعة
+        await supabase.from('group_payments').update({ status: 'active', merchant_token: merchantToken }).eq('merchant_token', merchantToken)
+        await supabase.from('group_members').insert({ group_id: customData.groupId, user_id: userId }).then(() => {}, () => {})
       } else {
         // تفعيل الـ Premium
         await supabase

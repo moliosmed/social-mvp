@@ -19,6 +19,7 @@ export default function Groups() {
   const [newGroupName, setNewGroupName] = useState('')
   const [newGroupDesc, setNewGroupDesc] = useState('')
   const [newGroupPrivate, setNewGroupPrivate] = useState(false)
+  const [newGroupPrice, setNewGroupPrice] = useState('')
   const [view, setView] = useState<'list' | 'my' | 'group'>('list')
   
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -95,14 +96,14 @@ export default function Groups() {
     try {
       const { data: newGroup, error } = await supabase
         .from('groups')
-        .insert({ name: newGroupName, description: newGroupDesc, creator_id: user.id, is_private: newGroupPrivate })
+        .insert({ name: newGroupName, description: newGroupDesc, creator_id: user.id, is_private: newGroupPrivate, is_paid: Number(newGroupPrice) > 0, price: Number(newGroupPrice) || 0 })
         .select()
         .single()
       if (error) throw error
       
       await supabase.from('group_members').insert({ group_id: newGroup.id, user_id: user.id, role: 'admin' })
       
-      setNewGroupName(''); setNewGroupDesc(''); setNewGroupPrivate(false)
+      setNewGroupName(''); setNewGroupDesc(''); setNewGroupPrivate(false); setNewGroupPrice('')
       setShowCreateModal(false)
       await fetchGroups()
       await fetchMyGroups(user.id)
@@ -110,11 +111,23 @@ export default function Groups() {
     finally { setLoading(false) }
   }
 
-  const joinGroup = async (groupId: string) => {
+  const joinGroup = async (group: any) => {
     if (!user) return
-    await supabase.from('group_members').insert({ group_id: groupId, user_id: user.id })
+    // مجموعة مدفوعة → الدفع عبر PayZone
+    if (group?.is_paid && Number(group?.price) > 0) {
+      const res = await fetch('/api/groups/join-paid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, groupId: group.id }),
+      })
+      const data = await res.json()
+      if (data.url) { window.location.href = data.url; return }
+      alert(data.error || 'فشل إنشاء الدفع')
+      return
+    }
+    await supabase.from('group_members').insert({ group_id: group.id, user_id: user.id })
     await fetchMyGroups(user.id)
-    if (selectedGroup?.id === groupId) await fetchMembers(groupId)
+    if (selectedGroup?.id === group.id) await fetchMembers(group.id)
   }
 
   const leaveGroup = async (groupId: string) => {
@@ -201,8 +214,8 @@ export default function Groups() {
                     <UserMinus size={16} /> مغادرة
                   </button>
                 ) : (
-                  <button onClick={() => joinGroup(selectedGroup.id)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm">
-                    <UserPlus size={16} /> انضمام
+                  <button onClick={() => joinGroup(selectedGroup)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm">
+                    <UserPlus size={16} /> {selectedGroup?.is_paid && Number(selectedGroup?.price) > 0 ? `انضمام بـ ${selectedGroup.price} ${selectedGroup.currency || 'MAD'}` : 'انضمام'}
                   </button>
                 )}
               </div>
@@ -301,6 +314,10 @@ export default function Groups() {
                 <input type="checkbox" checked={newGroupPrivate} onChange={(e) => setNewGroupPrivate(e.target.checked)} className="w-4 h-4" />
                 <span className="text-sm text-gray-700 dark:text-gray-300">مجموعة خاصة</span>
               </label>
+              <div>
+                <label className="text-sm text-gray-700 dark:text-gray-300 mb-1 block">سعر الاشتراك (MAD) — 0 = مجاني</label>
+                <input type="number" min="0" value={newGroupPrice} onChange={(e) => setNewGroupPrice(e.target.value)} placeholder="0" className="w-full p-2 border dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white" />
+              </div>
               <div className="flex gap-2">
                 <button onClick={() => setShowCreateModal(false)} className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition text-sm">إلغاء</button>
                 <button onClick={createGroup} disabled={loading || !newGroupName.trim()} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition text-sm">{loading ? 'جاري الإنشاء...' : 'إنشاء'}</button>

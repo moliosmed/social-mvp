@@ -107,4 +107,19 @@ DROP POLICY IF EXISTS "Users can add boosts" ON boosts;
 CREATE POLICY "Users can add boosts" ON boosts
   FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 
+-- ============ ads (إعلانات) ============
+CREATE TABLE IF NOT EXISTS ads (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  title text NOT NULL,
+  image_url text,
+  link_url text,
+  cta text DEFAULT 'اكتشف المزيد',
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE ads ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view active ads" ON ads;
+CREATE POLICY "Users can view active ads" ON ads
+  FOR SELECT TO authenticated USING (true);
+
 -- =====================================================================
