@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { Send, MessageCircle, Image as ImageIcon, X, UserPlus, Check, User, Search, Moon, Sun, Trash2, Bell, Loader, Share2, Pencil, Save, Bookmark, ThumbsUp, Heart, Plus, ChevronLeft, ChevronRight, BellOff, BellRing, Ban, Hash, Reply, RefreshCw, Users, BarChart3, Vote, FileText, TrendingUp, Activity, Globe, Rocket } from 'lucide-react'
 import Link from 'next/link'
@@ -65,6 +65,10 @@ export default function Feed() {
   const [showBoostModal, setShowBoostModal] = useState(false)
   const [boostingPost, setBoostingPost] = useState<any>(null)
   const [boosting, setBoosting] = useState(false)
+
+  // 📢 الإعلانات + بروفايل المستخدم
+  const [profile, setProfile] = useState<any>(null)
+  const [ads, setAds] = useState<any[]>([])
 
   // 🌐 حالات اللغة
   const [language, setLanguage] = useState<'ar' | 'en'>('ar')
@@ -262,6 +266,10 @@ export default function Feed() {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user)
       if (user) {
+        // البروفايل ديال المستخدم (باش نعرفو واش premium)
+        const { data: profileData } = await supabase.from('profiles').select('premium').eq('id', user.id).single()
+        if (profileData) setProfile(profileData)
+        fetchAds()
         await fetchFollowing(user.id)
         await fetchBookmarks(user.id)
         await fetchBlockedUsers(user.id)
@@ -369,6 +377,12 @@ export default function Feed() {
   const fetchBookmarks = async (userId: string) => {
     const { data } = await supabase.from('bookmarks').select('post_id').eq('user_id', userId)
     if (data) setBookmarks(new Set(data.map(b => b.post_id)))
+  }
+
+  // 📢 جلب الإعلانات النشطة
+  const fetchAds = async () => {
+    const { data } = await supabase.from('ads').select('*').eq('active', true).limit(5)
+    if (data) setAds(data)
   }
 
   const fetchBlockedUsers = async (userId: string) => {
@@ -1105,6 +1119,20 @@ export default function Feed() {
             </div>
           </form>
         </div>
+
+        {/* 📢 إعلان (غير الـ premium) */}
+        {!profile?.premium && ads.length > 0 && (
+          <div
+            className={`p-4 rounded-xl shadow border cursor-pointer transition ${darkMode ? 'bg-gray-800 border-gray-700 hover:bg-gray-750' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+            onClick={() => ads[0].link_url && window.open(ads[0].link_url, '_blank')}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-medium">إعلان</span>
+            </div>
+            <p className={`font-bold ${textPrimary}`}>{ads[0].title}</p>
+            <button className="mt-2 text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">{ads[0].cta || 'اكتشف المزيد'}</button>
+          </div>
+        )}
 
         {filteredPosts.length === 0 ? (
           <p className={`text-center p-6 rounded-xl shadow border ${cardBg} ${textSecondary}`}>
