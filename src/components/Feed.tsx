@@ -907,6 +907,7 @@ export default function Feed() {
 
             <Link href="/messages" className={`flex items-center gap-2 text-sm transition ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-600 hover:text-blue-600'}`}><MessageCircle size={18} /> <span className="hidden sm:inline">{t.messages}</span></Link>
             <Link href="/groups" className={`flex items-center gap-2 text-sm transition ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-600 hover:text-blue-600'}`}><Users size={18} /> <span className="hidden sm:inline">{t.groups}</span></Link>
+            <Link href="/landing" className={`flex items-center gap-2 text-sm transition ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-600 hover:text-blue-600'}`}><TrendingUp size={18} /> <span className="hidden sm:inline">{language === 'ar' ? 'المجتمع' : 'Community'}</span></Link>
             <Link href="/profile" className={`flex items-center gap-2 text-sm transition ${darkMode ? 'text-gray-300 hover:text-blue-400' : 'text-gray-600 hover:text-blue-600'}`}><User size={18} /> <span className="hidden sm:inline">{t.profile}</span></Link>
           </div>
         </div>
