@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 
 export default function Auth() {
@@ -12,6 +12,29 @@ export default function Auth() {
   
   const supabase = createClient()
 
+  // التقاط رابط الدعوة
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get('ref')
+    if (ref) localStorage.setItem('ref_code', ref)
+  }, [])
+
+  // تسجيل الدعوة
+  const recordReferral = async (newUserId: string) => {
+    const ref = localStorage.getItem('ref_code')
+    if (!ref) return
+    try {
+      const { data: referrer } = await supabase
+        .from('profiles')
+        .select('id')
+        .or(`username.eq.${ref},id.eq.${ref}`)
+        .single()
+      if (referrer && referrer.id !== newUserId) {
+        await supabase.from('referrals').insert({ referrer_id: referrer.id, referred_id: newUserId }).then(() => {}, () => {})
+      }
+      localStorage.removeItem('ref_code')
+    } catch {}
+  }
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -19,12 +42,13 @@ export default function Auth() {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: { data: { full_name: email.split('@')[0] } }
         })
         if (error) throw error
+        if (data?.user) await recordReferral(data.user.id)
         setMessage('تم إنشاء الحساب! يمكنك الدخول الآن.')
         setIsSignUp(false)
       } else {
