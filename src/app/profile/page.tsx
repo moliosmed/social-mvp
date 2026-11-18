@@ -21,6 +21,7 @@ export default function Profile() {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [referralCount, setReferralCount] = useState(0)
 
   const supabase = createClient()
 
@@ -50,6 +51,10 @@ export default function Profile() {
         followers: followers || 0, 
         following: following || 0 
       })
+
+      // عدد الدعوات
+      const { count: refCount } = await supabase.from('referrals').select('*', { count: 'exact', head: true }).eq('referrer_id', user.id)
+      setReferralCount(refCount || 0)
     }
     getData()
   }, [])
@@ -252,6 +257,11 @@ export default function Profile() {
         <div className="bg-white p-6 rounded-xl shadow mb-6">
           <h3 className="text-lg font-bold text-gray-900 mb-2">🎁 دعوة الأصدقاء</h3>
           <p className="text-sm text-gray-500 mb-3">شارك رابط الدعوة ديالك و ربح مكافآت.</p>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm font-medium text-gray-700">عدد الدعوات:</span>
+            <span className="text-lg font-bold text-blue-600">{referralCount}</span>
+            {referralCount >= 3 && <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full font-medium">🎁 مكافأة مفعلة</span>}
+          </div>
           <div className="flex gap-2">
             <input
               readOnly
@@ -268,6 +278,7 @@ export default function Profile() {
               نسخ
             </button>
           </div>
+          <p className="text-xs text-gray-400 mt-2">🎯 3 دعوات = مكافأة (7 أيام Premium)</p>
         </div>
 
         <h2 className="text-xl font-bold text-gray-900 mb-4">منشوراتي</h2>
