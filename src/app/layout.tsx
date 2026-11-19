@@ -2,12 +2,10 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
-
 const inter = Inter({ 
   subsets: ['latin'],
   display: 'swap',
 })
-
 export const metadata: Metadata = {
   title: 'Molios Empire | شبكتك الاجتماعية',
   description: 'شارك أفكارك، صورك، وتواصل مع أصدقائك على Molios Empire. منصة اجتماعية عصرية وسريعة.',
@@ -48,7 +46,6 @@ export const metadata: Metadata = {
     follow: true,
   },
 }
-
 export default function RootLayout({
   children,
 }: {
@@ -58,8 +55,8 @@ export default function RootLayout({
     <html lang="ar" dir="rtl">
       <body className={`${inter.className} antialiased`} suppressHydrationWarning>
         {children}
+        <Analytics />
       </body>
-              <Analytics />
     </html>
   )
 }
