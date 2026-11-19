@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import Link from 'next/link'
 import './globals.css'
 const inter = Inter({ 
   subsets: ['latin'],
@@ -58,6 +59,43 @@ export default function RootLayout({
     <html lang="ar" dir="rtl">
       <body className={`${inter.className} antialiased`} suppressHydrationWarning>
         {children}
+        <footer className="bg-gray-900 text-gray-400 border-t border-gray-800">
+          <div className="max-w-5xl mx-auto px-6 py-10 grid sm:grid-cols-2 md:grid-cols-4 gap-8 text-sm">
+            <div>
+              <p className="text-white font-bold mb-3">🌍 Molios Empire</p>
+              <p>شبكتك العربية المغربية — منشورات، تفاعلات، رسائل فورية، مجموعات.</p>
+            </div>
+            <div>
+              <p className="text-white font-bold mb-3">الصفحات</p>
+              <ul className="space-y-2">
+                <li><Link href="/landing" className="hover:text-white">الرئيسية (B2B)</Link></li>
+                <li><Link href="/pricing" className="hover:text-white">الأسعار</Link></li>
+                <li><Link href="/groups" className="hover:text-white">المجموعات</Link></li>
+                <li><Link href="/about" className="hover:text-white">من نحن</Link></li>
+              </ul>
+            </div>
+            <div>
+              <p className="text-white font-bold mb-3">المساعدة</p>
+              <ul className="space-y-2">
+                <li><Link href="/help" className="hover:text-white">مركز المساعدة</Link></li>
+                <li><Link href="/privacy" className="hover:text-white">الخصوصية</Link></li>
+                <li><Link href="/terms" className="hover:text-white">شروط الاستخدام</Link></li>
+              </ul>
+            </div>
+            <div>
+              <p className="text-white font-bold mb-3">تواصل</p>
+              <ul className="space-y-2">
+                <li><a href="mailto:mohamedbennah1@gmail.com" className="hover:text-white">البريد</a></li>
+                <li><a href="https://www.instagram.com/moliosempire0/" className="hover:text-white">Instagram</a></li>
+                <li><a href="https://www.facebook.com/MOLIOSEMPIRO" className="hover:text-white">Facebook</a></li>
+                <li><a href="https://www.tiktok.com/@MOLIOSEMPIRE" className="hover:text-white">TikTok</a></li>
+              </ul>
+            </div>
+          </div>
+          <div className="border-t border-gray-800 py-4 text-center text-xs">
+            © 2026 Molios Empire — كل الحقوق محفوظة
+          </div>
+        </footer>
         <Analytics />
       </body>
     </html>
