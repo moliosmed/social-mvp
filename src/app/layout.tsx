@@ -58,6 +58,28 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl">
       <body className={`${inter.className} antialiased`} suppressHydrationWarning>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'WebSite',
+              name: 'Molios Empire',
+              alternateName: 'موليوس إمباير',
+              url: 'https://www.moliosempire.com',
+              inLanguage: ['ar', 'en'],
+              publisher: {
+                '@type': 'Organization',
+                name: 'Molios Empire',
+                url: 'https://www.moliosempire.com',
+                logo: {
+                  '@type': 'ImageObject',
+                  url: 'https://www.moliosempire.com/og-image.png',
+                },
+              },
+            }),
+          }}
+        />
         {children}
         <footer className="bg-gray-900 text-gray-400 border-t border-gray-800">
           <div className="max-w-5xl mx-auto px-6 py-10 grid sm:grid-cols-2 md:grid-cols-4 gap-8 text-sm">
