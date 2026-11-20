@@ -72,6 +72,7 @@ export default function RootLayout({
                 <li><Link href="/pricing" className="hover:text-white">الأسعار</Link></li>
                 <li><Link href="/groups" className="hover:text-white">المجموعات</Link></li>
                 <li><Link href="/about" className="hover:text-white">من نحن</Link></li>
+                <li><Link href="/blog" className="hover:text-white">المدونة</Link></li>
               </ul>
             </div>
             <div>
