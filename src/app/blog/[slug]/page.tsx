@@ -1,0 +1,113 @@
+import type { Metadata } from 'next'
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+
+const POSTS: Record<string, { title: string; cat: string; date: string; body: string[] }> = {
+  'ecommerce-morocco': {
+    title: 'كيفاش تبدا التجارة الإلكترونية فالمغرب 2026',
+    cat: 'تجارة',
+    date: '2026-11-19',
+    body: [
+      'التجارة الإلكترونية فالمغرب كبرات بزاف فهاد السنوات. دابا  opportunity ذهبية لكل واحد بغى يبدا مشروعو الخاص.',
+      '**الخطوة 1: اختار المنتج.** سير على المنتجات لي عليها الطلب: الملابس، الإلكترونيات، المنتجات المحلية. استعمل Google Trends و مواقع التواصل باش تعرف شنو كايطلب الناس.',
+      '**الخطوة 2: اختار المورد.** تجي من الدار البيضاء (أسواق) ولا من الصين (AliExpress) ولا من موردين محليين. همّ الجودة و الثمن.',
+      '**الخطوة 3: ابنِ متجرك.** استعمل Shopify ولا ولا منصة محلية. همّ التصميم و سهولة الدفع.',
+      '**الخطوة 4: سوّق.** استعمل Instagram، TikTok، و Facebook. انضم ل community ديال Molios Empire باش تتعلم من تجارب الآخرين.',
+      '**الخطوة 5: حلل.** تابع المبيعات، الـ conversion rate، و ردود العملاء. حسّن باستمرار.',
+      'ابدأ صغير و كبر. النجاح كيجي بالاستمرارية.',
+    ],
+  },
+  'social-media-tips': {
+    title: '5 نصائح باش تربح من السوشيال ميديا',
+    cat: 'تسويق',
+    date: '2026-11-19',
+    body: [
+      'السوشيال ميديا وفرة للربح إلا عرفتي كيفاش تستعملها. ها 5 نصائح مجربة:',
+      '**1. كون العلامة.** اختار مجال (تجارة، طبخ، تقنية) و بقّيه. الناس كيتابعو اللي كيعرفوه.',
+      '**2. المحتوى أولاً.** نشر محتوى مفيد قبل ما تبيع. الـ 80% قيمة و الـ 20% بيع.',
+      '**3. التفاعل.** رد على كل تعليق و رسالة. الـ engagement هو اللي كيرفع المنشورات.',
+      '**4. الانتظام.** نشر كل يوم ولا 3-5 مرات فالأسبوع. الانتظام أهم من الكمال.',
+      '**5. استعمل المنصات الذكية.** انشر فالمكان لي فيه جمهوروك. عندك Molios Empire — شبكة عربية مصممة ليك.',
+      'ابدأ اليوم، النتيجة غ تجي مع الوقت.',
+    ],
+  },
+  'moliosempire-features': {
+    title: 'Molios Empire: الشبكة الاجتماعية المغربية الأولى',
+    cat: 'منصة',
+    date: '2026-11-19',
+    body: [
+      'Molios Empire شبكة اجتماعية عربية مغربية — مصممة باش تخدم المبدعين و التجار و المهتمين.',
+      '**المميزات:** منشورات، تفاعلات emoji، رسائل فورية، مجموعات، هاشتاجات، استطلاعات، قصص، شارات، و بحث فوري.',
+      '**الدخل:** Premium بـ 29.90 MAD فالشهر، تعزيز المنشورات بـ PayZone، إعلانات، و مجموعات مدفوعة.',
+      '**الدعوات:** كل 3 دعوات = 7 أيام Premium مجاناً.',
+      'انضم دابا: moliosempire.com',
+    ],
+  },
+  'dropshipping-guide': {
+    title: 'الدروب شيبينغ للمبتدئين',
+    cat: 'تجارة',
+    date: '2026-11-19',
+    body: [
+      'الدروب شيبينغ = تبيع بلا مخزون. المورد كايوصول للزبون مباشرة. مثالي للمبتدئين.',
+      '**المزايا:** رأس مال قليل، بلا مخزون، بلا لوجستيك.',
+      '**العيوب:** هوامش ربح أقل، تحكم أقل فالجودة، منافسة قوية.',
+      '**كيفاش تبدا:** اختار منتج، ابنِ متجر، اختار مورد (AliExpress/CJ)، سوّق بـ الإعلانات.',
+      'انضم لمجتمع التجار فـ Molios Empire باش تشارك تجربتك.',
+    ],
+  },
+  'content-marketing': {
+    title: 'تسويق المحتوى: كيفاش تكتب منشورات كتجيب المبيعات',
+    cat: 'تسويق',
+    date: '2026-11-19',
+    body: [
+      'المحتوى هو الملك. منشور مزيان يقدر يكون أفضل من 100 إعلان.',
+      '**التركيبة:** (1) عنوان جذاب (2) قصة (3) قيمة (4) دعوة للعمل.',
+      '**العنوان:** استعمل الأرقام و الأسئلة و الكلمات القوية.',
+      '**القيمة:** علم، حفّز، أو سلّي. ما تبيعش فالأول.',
+      '**الدعوة للعمل:** "جرّب دابا"، "انضم مجاناً"، "زور موقعنا".',
+      'ممارسة يومية + تحليل = نتائج.',
+    ],
+  },
+}
+
+export function generateStaticParams() {
+  return Object.keys(POSTS).map((slug) => ({ slug }))
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params
+  const p = POSTS[slug]
+  return { title: p ? `${p.title} | Molios Empire` : 'مدونة Molios Empire', description: p?.body[0] }
+}
+
+export default async function PostPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+  const p = POSTS[slug]
+  if (!p) notFound()
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white">
+      <article className="max-w-3xl mx-auto px-6 py-16">
+        <div className="flex items-center gap-3 mb-4 text-xs">
+          <span className="bg-blue-600/20 text-blue-300 px-3 py-1 rounded-full">{p.cat}</span>
+          <span className="text-gray-500">{p.date}</span>
+        </div>
+        <h1 className="text-3xl md:text-5xl font-extrabold leading-tight mb-8">{p.title}</h1>
+        <div className="space-y-5 text-lg text-gray-300 leading-relaxed">
+          {p.body.map((para, i) => (
+            <p key={i}>{para.replace(/\*\*(.+?)\*\*/g, '$1')}</p>
+          ))}
+        </div>
+        <div className="mt-12 bg-blue-600/20 rounded-2xl p-8 border border-blue-500/30 text-center">
+          <h2 className="text-2xl font-bold mb-4">انضم لـ Molios Empire</h2>
+          <Link href="/" className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-3 rounded-full transition">
+            سجل مجاناً 🚀
+          </Link>
+        </div>
+        <div className="mt-8 text-center">
+          <Link href="/blog" className="text-blue-400 hover:text-blue-300">→ كل المقالات</Link>
+        </div>
+      </article>
+    </div>
+  )
+}
