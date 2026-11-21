@@ -59,6 +59,26 @@ export default function Auth() {
     } catch {}
   }
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setMessage('كتب الإيميل ديالك أولاً')
+      return
+    }
+    setLoading(true)
+    setMessage('')
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: 'https://www.moliosempire.com/',
+      })
+      if (error) throw error
+      setMessage('تم إرسال رابط استعادة كلمة المرور للإيميل ديالك ✅')
+    } catch (error: any) {
+      setMessage(error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -167,6 +187,18 @@ export default function Auth() {
             {isSignUp ? 'لديك حساب؟ سجل دخول' : "ليس لديك حساب؟ سجل الآن"}
           </button>
         </div>
+
+        {!isSignUp && (
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              className="text-sm font-medium text-gray-500 hover:text-blue-500"
+            >
+              نسيت كلمة المرور؟
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
