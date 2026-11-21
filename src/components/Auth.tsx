@@ -7,11 +7,34 @@ export default function Auth() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false)
   const [isSignUp, setIsSignUp] = useState(false)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   
   const supabase = createClient()
+
+  // تحميل البيانات المحفوظة (تذكرني)
+  useEffect(() => {
+    const saved = localStorage.getItem('me_auth')
+    if (saved) {
+      try {
+        const d = JSON.parse(saved)
+        setEmail(d.email || '')
+        setPassword(d.password || '')
+        setRememberMe(true)
+      } catch {}
+    }
+  }, [])
+
+  // حفظ / مسح البيانات
+  useEffect(() => {
+    if (rememberMe && email) {
+      localStorage.setItem('me_auth', JSON.stringify({ email, password }))
+    } else {
+      localStorage.removeItem('me_auth')
+    }
+  }, [rememberMe, email, password])
 
   // التقاط رابط الدعوة
   useEffect(() => {
@@ -109,6 +132,16 @@ export default function Auth() {
               </button>
             </div>
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            تذكرني (حفظ بيانات الدخول)
+          </label>
 
           {message && (
             <div className={`text-sm text-center ${message.includes('تم') ? 'text-green-600' : 'text-red-600'}`}>
