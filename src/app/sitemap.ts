@@ -17,5 +17,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${BASE}/blog/moliosempire-features`, changeFrequency: 'monthly', priority: 0.7 },
     { url: `${BASE}/blog/dropshipping-guide`, changeFrequency: 'monthly', priority: 0.7 },
     { url: `${BASE}/blog/content-marketing`, changeFrequency: 'monthly', priority: 0.7 },
+    { url: `${BASE}/blog/grow-store`, changeFrequency: 'monthly', priority: 0.7 },
+    { url: `${BASE}/blog/product-selection`, changeFrequency: 'monthly', priority: 0.7 },
+    { url: `${BASE}/blog/personal-brand`, changeFrequency: 'monthly', priority: 0.7 },
+    { url: `${BASE}/blog/social-income`, changeFrequency: 'monthly', priority: 0.7 },
   ]
 }
