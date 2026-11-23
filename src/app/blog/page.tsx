@@ -7,6 +7,9 @@ export const metadata: Metadata = {
 }
 
 const POSTS = [
+  { slug: 'morocco-social-media', title: 'أحسن منصات التواصل الاجتماعي فالمغرب 2026', date: '2026-11-23', read: '5 دقائق', cat: 'تسويق', excerpt: 'Instagram، TikTok، Facebook، LinkedIn — شكون فيهم الأحسن ليك و كيفاش تختار.' },
+  { slug: 'online-money-ma', title: 'كيفاش تربح فلوس من الأنترتي فالمغرب (بلا رأس مال)', date: '2026-11-23', read: '6 دقائق', cat: 'ربح', excerpt: '5 طرق مجربة باش تربح من الأنترتي بلا ما تنفق حتى درهم.' },
+  { slug: 'ecommerce-payments', title: 'طرق الدفع الإلكتروني فالمغرب: PayZone, CIH, PayPal', date: '2026-11-23', read: '4 دقائق', cat: 'تجارة', excerpt: 'كل طرق الدفع المتاحة للمتاجر المغربية و أيهم الأحسن لمبيعاتك.' },
   { slug: 'ecommerce-morocco', title: 'كيفاش تبدا التجارة الإلكترونية فالمغرب 2026', date: '2026-11-19', read: '5 دقائق', cat: 'تجارة', excerpt: 'دليل كامل خطوة بخطوة باش تبدا متجرك الإلكتروني فالمغرب.' },
   { slug: 'social-media-tips', title: '5 نصائح باش تربح من السوشيال ميديا', date: '2026-11-19', read: '4 دقائق', cat: 'تسويق', excerpt: 'استراتيجيات مجربة باش تكبر متابعيك و تربح من المحتوى.' },
   { slug: 'moliosempire-features', title: ' Molios Empire: الشبكة الاجتماعية المغربية الأولى', date: '2026-11-19', read: '3 دقائق', cat: 'منصة', excerpt: 'كل اللي خاصك تعرف على Molios Empire — المميزات، الدخل، و كيفاش تنضم.' },
