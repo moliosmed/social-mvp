@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import Link from 'next/link'
+import Pwa from '@/components/Pwa'
 import './globals.css'
 const inter = Inter({ 
   subsets: ['latin'],
@@ -46,6 +47,13 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+  manifest: '/site.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Molios Empire',
+  },
+  formatDetection: { telephone: false },
   verification: {
     google: 'q1F5eEvyq2I6IQhkUPdhDu6O8pfT5RPQcnv411WRIsE',
   },
@@ -81,6 +89,7 @@ export default function RootLayout({
           }}
         />
         {children}
+        <Pwa />
         <footer className="bg-gray-900 text-gray-400 border-t border-gray-800">
           <div className="max-w-5xl mx-auto px-6 py-10 grid sm:grid-cols-2 md:grid-cols-4 gap-8 text-sm">
             <div>
