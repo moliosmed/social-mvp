@@ -8,6 +8,12 @@ export const metadata: Metadata = {
 }
 
 const POSTS = [
+  { slug: 'whatsapp-business-ma', title: 'واتساب Business فالمغرب: كيفاش تستعملو باش تبيع أكثر', date: '2026-11-24', read: '5 دقائق', cat: 'تسويق', excerpt: 'دليل عملي: بروفايل، كتالوج، رد سريع و قوائم بث.' },
+  { slug: 'instagram-reels-ma', title: 'ريلز Instagram: كيفاش توصل آلاف المشاهدات من المغرب', date: '2026-11-24', read: '6 دقائق', cat: 'محتوى', excerpt: '6 قواعد ذهبية باش الريلز ديالك ينتشر.' },
+  { slug: 'email-marketing-ma', title: 'التسويق بالبريد الإلكتروني فالمغرب: الدليل الكامل', date: '2026-11-24', read: '6 دقائق', cat: 'تسويق', excerpt: '36 درهم مقابل كل درهم — و لكن بزاف كايـأهملو.' },
+  { slug: 'google-my-business-ma', title: 'Google My Business فالمغرب: مجاني و كايجيب زباين', date: '2026-11-24', read: '5 دقائق', cat: 'تجارة', excerpt: 'الظهور فـ Maps و البحث المحلي بلا ما تدفع سنتيما.' },
+  { slug: 'freelance-morocco', title: 'الفريلانس فالمغرب: كيفاش تبدأ، تلقا الزباين، و تربح بالدولار', date: '2026-11-24', read: '7 دقائق', cat: 'ربح', excerpt: 'من الصفر حتى لأول عميل بالدولار، بلا احتيال.' },
+
   { slug: 'morocco-social-media', title: 'أحسن منصات التواصل الاجتماعي فالمغرب 2026', date: '2026-11-23', read: '5 دقائق', cat: 'تسويق', excerpt: 'Instagram، TikTok، Facebook، LinkedIn — شكون فيهم الأحسن ليك و كيفاش تختار.' },
   { slug: 'online-money-ma', title: 'كيفاش تربح فلوس من الأنترتي فالمغرب (بلا رأس مال)', date: '2026-11-23', read: '6 دقائق', cat: 'ربح', excerpt: '5 طرق مجربة باش تربح من الأنترتي بلا ما تنفق حتى درهم.' },
   { slug: 'ecommerce-payments', title: 'طرق الدفع الإلكتروني فالمغرب: PayZone, CIH, PayPal', date: '2026-11-23', read: '4 دقائق', cat: 'تجارة', excerpt: 'كل طرق الدفع المتاحة للمتاجر المغربية و أيهم الأحسن لمبيعاتك.' },
