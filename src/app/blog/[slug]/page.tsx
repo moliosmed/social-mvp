@@ -199,6 +199,27 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'BlogPosting',
+            headline: p.title,
+            description: p.body[0],
+            inLanguage: 'ar-MA',
+            datePublished: p.date,
+            author: { '@type': 'Organization', name: 'Molios Empire', url: 'https://www.moliosempire.com' },
+            publisher: {
+              '@type': 'Organization',
+              name: 'Molios Empire',
+              logo: { '@type': 'ImageObject', url: 'https://www.moliosempire.com/android-chrome-192x192.png' },
+            },
+            image: 'https://www.moliosempire.com/og-image.png',
+            mainEntityOfPage: `https://www.moliosempire.com/blog/${slug}`,
+          }),
+        }}
+      />
       <article className="max-w-3xl mx-auto px-6 py-16">
         <div className="flex items-center gap-3 mb-4 text-xs">
           <span className="bg-blue-600/20 text-blue-300 px-3 py-1 rounded-full">{p.cat}</span>
