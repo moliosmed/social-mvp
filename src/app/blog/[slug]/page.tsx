@@ -171,7 +171,7 @@ const POSTS: Record<string, { title: string; cat: string; date: string; body: st
     ],
   },
   'instagram-reels-ma': {
-    title: 'ريلز Instagram: كيفاش توصل  thousands المشاهدات من المغرب',
+    title: 'ريلز Instagram: كيفاش توصل آلاف المشاهدات',
     cat: 'محتوى',
     date: '2026-11-24',
     body: [
@@ -216,7 +216,7 @@ const POSTS: Record<string, { title: string; cat: string; date: string; body: st
     ],
   },
   'freelance-morocco': {
-    title: 'الفريلانس فالمغرب: كيفاش تبدأ، تلقا الزباين، و تربح بالدولار',
+    title: 'الفريلانس فالمغرب: من الصفر حتى الدولار',
     cat: 'ربح',
     date: '2026-11-24',
     body: [
