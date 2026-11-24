@@ -3,7 +3,7 @@ import Link from 'next/link'
 
 export const metadata: Metadata = {
   alternates: { canonical: 'https://www.moliosempire.com/about' },
-  title: 'من نحن | Molios Empire',
+  title: 'من نحن | Molios Empire — الشبكة الاجتماعية العربية المغربية',
   description: 'Molios Empire — شبكة اجتماعية عربية مغربية. تعرّف على قصتنا، رؤيتنا، وفريقنا.',
   openGraph: { title: 'من نحن | Molios Empire', description: 'Molios Empire — شبكة اجتماعية عربية.' },
 }

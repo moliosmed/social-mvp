@@ -201,7 +201,7 @@ const POSTS: Record<string, { title: string; cat: string; date: string; body: st
     ],
   },
   'google-my-business-ma': {
-    title: 'Google My Business فالمغرب: مجاني و كايجيب زباين (دليل 2026)',
+    title: 'Google My Business فالمغرب: دليل مجاني 2026',
     cat: 'تجارة',
     date: '2026-11-24',
     body: [

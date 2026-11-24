@@ -3,7 +3,7 @@ import Link from 'next/link'
 
 export const metadata: Metadata = {
   alternates: { canonical: 'https://www.moliosempire.com/help' },
-  title: 'المساعدة | Molios Empire',
+  title: 'مركز المساعدة | Molios Empire — أسئلة شائعة و أدلة',
   description: 'مركز المساعدة ديال Molios Empire — أجوبة على الأسئلة الشائعة و كيفاش تخدم المنصة.',
 }
 

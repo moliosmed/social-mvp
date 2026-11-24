@@ -1,4 +1,12 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
+
+export const metadata: Metadata = {
+  alternates: { canonical: 'https://www.moliosempire.com/landing' },
+  title: 'Molios Empire B2B | مجتمع التجارة الإلكترونية فالمغرب',
+  description: 'انضم لأكبر مجتمع عربي للتجارة الإلكترونية فالمغرب: متاجر، تسويق، دعم و نصائح.',
+  openGraph: { title: 'Molios Empire B2B', description: 'مجتمع التجارة الإلكترونية فالمغرب.' },
+}
 
 const PLANS = [
   {
