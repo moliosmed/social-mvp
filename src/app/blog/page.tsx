@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
+  alternates: { canonical: 'https://www.moliosempire.com/blog' },
   title: 'المدونة | Molios Empire',
   description: 'مقالات ونصائح حول التجارة الإلكترونية، التسويق الرقمي، والشبكات الاجتماعية.',
 }

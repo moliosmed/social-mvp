@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
+  alternates: { canonical: 'https://www.moliosempire.com/privacy' },
   title: 'سياسة الخصوصية | Molios Empire',
   description: 'سياسة الخصوصية ديال Molios Empire — كيفاش كنجمعين، كنتخدمو، و كنحميو بياناتك.',
 }

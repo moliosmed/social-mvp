@@ -9,6 +9,8 @@ const inter = Inter({
   display: 'swap',
 })
 export const metadata: Metadata = {
+  metadataBase: new URL('https://www.moliosempire.com'),
+  alternates: { canonical: 'https://www.moliosempire.com/' },
   title: 'Molios Empire | شبكتك الاجتماعية',
   description: 'شارك أفكارك، صورك، وتواصل مع أصدقائك على Molios Empire. منصة اجتماعية عصرية وسريعة.',
   keywords: ['social network', 'شبكة اجتماعية', 'molios empire', 'منصة اجتماعية', 'مشاركة صور'],

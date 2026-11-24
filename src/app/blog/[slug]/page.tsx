@@ -180,7 +180,16 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
   const p = POSTS[slug]
-  return { title: p ? `${p.title} | Molios Empire` : 'مدونة Molios Empire', description: p?.body[0] }
+  return {
+    title: p ? `${p.title} | Molios Empire` : 'مدونة Molios Empire',
+    description: p?.body[0],
+    alternates: { canonical: `https://www.moliosempire.com/blog/${slug}` },
+    openGraph: {
+      title: p ? `${p.title} | Molios Empire` : 'مدونة Molios Empire',
+      description: p?.body[0],
+      url: `https://www.moliosempire.com/blog/${slug}`,
+    },
+  }
 }
 
 export default async function PostPage({ params }: { params: Promise<{ slug: string }> }) {

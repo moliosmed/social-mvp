@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
+  alternates: { canonical: 'https://www.moliosempire.com/terms' },
   title: 'شروط الاستخدام | Molios Empire',
   description: 'شروط الاستخدام ديال Molios Empire — القواعد اللي كتحكم استخدام المنصة.',
 }

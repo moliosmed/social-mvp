@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
+  alternates: { canonical: 'https://www.moliosempire.com/campaign' },
   title: 'الحملة المجانية | Molios Empire',
   description: 'حملة نمو مجانية 100% — دعوة الأصدقاء، تحدي المحتوى، ومجتمع التجار. بلا إعلانات مدفوعة.',
 }

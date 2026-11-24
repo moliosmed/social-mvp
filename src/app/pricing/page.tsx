@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import PricingClient from '@/components/PricingClient'
 
 export const metadata: Metadata = {
+  alternates: { canonical: 'https://www.moliosempire.com/pricing' },
   title: 'الأسعار | Molios Empire',
   description:
     'خطط الاشتراك ديال Molios Empire — المجاني و Premium. قارن المميزات و اختر الخطة المناسبة ليك.',
