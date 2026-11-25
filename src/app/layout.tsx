@@ -106,6 +106,7 @@ export default function RootLayout({
                 <li><Link href="/groups" className="hover:text-white">المجموعات</Link></li>
                 <li><Link href="/about" className="hover:text-white">من نحن</Link></li>
                 <li><Link href="/blog" className="hover:text-white">المدونة</Link></li>
+                <li><Link href="/newsletter" className="hover:text-white">النشرة البريدية</Link></li>
                 <li><Link href="/campaign" className="hover:text-white">الحملة المجانية</Link></li>
               </ul>
             </div>
